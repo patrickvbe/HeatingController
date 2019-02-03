@@ -24,9 +24,9 @@ class recorder:
         if duration > 225:
             self.data[self.counter] = duration
             self.counter += 1
-            if duration > 400:
+            if duration > 300:
                 self.highcount += 1
-            if duration > 7000 or self.counter == self.MAXRECORD:
+            if duration > 4000 or self.counter == self.MAXRECORD:
                 self.led.value(not self.led.value())
                 if self.highcount * 5 > self.counter and self.counter > 25:
                     # at least 20% highs to be a signal instead of noise
