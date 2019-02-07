@@ -9,3 +9,7 @@ def callback(rcv):
 rcv = rfreceiver.receiver(Pin(5), callback)
 rcv.start()
 
+snd = rfreceiver.sender(Pin(4))
+
+def sendit():
+    snd.send(rfreceiver.ELRO, 9717073)
