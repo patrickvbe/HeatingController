@@ -26,15 +26,15 @@ PROTOCOLS = micropython.const((
     Protocol(ELRO,           50,  48,   0,    0, 325,  975,  975,  325, 325, 10000)      # Elro
 ))
 
-# The first thrashold is when we start recording, the second is the smalles valid value while recording.
+# The first threshold is when we start recording, the second is the smalles valid value while recording.
 # The Smartwares transmitter is a nightmare. It's pulses are often so short they blend in with the background noise...
 # If you are not using some protocols with low timing, you can set the thresholds to a higher value to lower the CPU load.
 # MAXRECORD is the maximum buffer size.
-# DURATIONTRASHOLD1 = micropython.const(275)
-# DURATIONTRASHOLD2 = micropython.const(225)
-DURATIONTRASHOLD1 = micropython.const(250)
-DURATIONTRASHOLD2 = micropython.const(225)
-SYNCPULSETRASHOLD = micropython.const(3000)
+# DURATIONTHRESHOLD1 = micropython.const(275)
+# DURATIONTHRESHOLD2 = micropython.const(225)
+DURATIONTHRESHOLD1 = micropython.const(250)
+DURATIONTHRESHOLD2 = micropython.const(225)
+SYNCPULSETHRESHOLD = micropython.const(3000)
 MAXRECORD = micropython.const(150)
 USCORRECTION =  micropython.const(100)
 
@@ -42,6 +42,15 @@ USCORRECTION =  micropython.const(100)
 def getTempFromWeather(weather):
     return (weather >> 12) & 0xFFF
 
+def sleep_us(useconds):
+    ''' Use our own sleep, because the buildin sleep drifts away too much due to background processing.'''
+    endtime = time.ticks_add(time.ticks_us(), useconds)
+    while True:
+        diff = time.ticks_diff(endtime, time.ticks_us())
+        if diff < 50:
+            break
+        if diff > 1000:
+            time.sleep_us(500)
 
 class sender:
 
@@ -67,18 +76,18 @@ class sender:
                 bitnr -= 1
                 self.pin.on()
                 if code & bitmask == 0:
-                    time.sleep_us(protocol.zero_high - USCORRECTION)
+                    sleep_us(protocol.zero_high)
                     self.pin.off()
-                    time.sleep_us(protocol.zero_low - USCORRECTION)
+                    sleep_us(protocol.zero_low)
                 else:
-                    time.sleep_us(protocol.one_high - USCORRECTION)
+                    sleep_us(protocol.one_high)
                     self.pin.off()
-                    time.sleep_us(protocol.one_low - USCORRECTION)
+                    sleep_us(protocol.one_low)
                 bitmask >>= 1
             self.pin.on()
-            time.sleep_us(protocol.end_high - USCORRECTION)
+            sleep_us(protocol.end_high)
             self.pin.off()
-            time.sleep_us(protocol.end_low - USCORRECTION)
+            sleep_us(protocol.end_low)
         # Decouple...
         self.pin.init(Pin.IN)
 
@@ -100,6 +109,7 @@ class receiver:
         for protocol in PROTOCOLS:
             if self._decodeprotocol(protocol):
                 return True
+        print(self._counter, self._data[:self._counter])
         return False
 
     def _decodeprotocol(self, protocol):
@@ -135,7 +145,6 @@ class receiver:
         if code == 0:
             return False
         # Pass it to the user.
-        print(self._counter, self._data[start:self._counter])
         self.code = code
         self.code_timestamp = self._last_timestamp
         self.code_protocol = protocol.id
