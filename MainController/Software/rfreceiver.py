@@ -28,7 +28,7 @@ PROTOCOLS = micropython.const((
 
 # The first thrashold is when we start recording, the second is the smalles valid value while recording.
 # The Smartwares transmitter is a nightmare. It's pulses are often so short they blend in with the background noise...
-# If you are not using some protocols with low timing, you can set the trasholds to a higher value to lower the CPU load.
+# If you are not using some protocols with low timing, you can set the thresholds to a higher value to lower the CPU load.
 # MAXRECORD is the maximum buffer size.
 # DURATIONTRASHOLD1 = micropython.const(275)
 # DURATIONTRASHOLD2 = micropython.const(225)
@@ -149,10 +149,10 @@ class receiver:
         self._last_timestamp = timestamp
 
         # Pulses shorter than 250us are usually noise. But my smartwares remote drifts to almost 225us...
-        if duration > DURATIONTRASHOLD1 or (duration > DURATIONTRASHOLD2 and self._counter > 0):
+        if duration > DURATIONTHRESHOLD1 or (duration > DURATIONTHRESHOLD2 and self._counter > 0):
             self._data[self._counter] = duration
             self._counter += 1
-            if duration > SYNCPULSETRASHOLD or self._counter == MAXRECORD:
+            if duration > SYNCPULSETHRESHOLD or self._counter == MAXRECORD:
                 # self.led.value(not self.led.value())
                 self._decode()
                 self._counter = 0
