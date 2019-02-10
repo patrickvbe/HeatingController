@@ -1,4 +1,6 @@
 #include "RF433.h"
+#include <OneWire.h>
+#include <DallasTemperature.h>
 
 #define DEBUG;
 #ifdef DEBUG
@@ -7,17 +9,22 @@
   #define DEBUGONLY()
 #endif
 
-#define SENDER_PIN   4
+#define SENDER_PIN   2
 #define RECEIVER_PIN 5
+#define DS18B20_PIN  4
 
-#define INVALID_TEMP  0xFFFF
-#define TEMP_VALIDITY 300000
+#define INVALID_TEMP      0xFFFF
+#define TEMP_VALIDITY     300000
+#define MEASURE_INTERVAL   10000
 
+// The values we preserve
 int           outsideTemperature = INVALID_TEMP;
 int           outsidePreviousTemperature = INVALID_TEMP;
 unsigned long outsideTimestamp  = 0; // millis
 int           insideTemperature  = INVALID_TEMP;
+unsigned long insideTimestamp = 0;
 
+// Interrupt routine for RF433 communication.
 void code_received(int protocol, unsigned long code, unsigned long timestamp)
 {
   if ( protocol == WEATHERSTATION)
@@ -31,28 +38,28 @@ void code_received(int protocol, unsigned long code, unsigned long timestamp)
   // Serial.print(code, BIN);
   // Serial.print(" / ");
   // Serial.print(code, HEX);
-  // if ( protocol == WEATHERSTATION)
-  // {
-  //   Serial.print(", T: ");
-  //   Serial.print(receiver::convertCodeToTemp(code));
-  // }
   // Serial.println();
 }
 
-receiver rcv(RECEIVER_PIN, code_received);
-sender   snd(SENDER_PIN);
+// The objects / sensors we have
+receiver          rcv(RECEIVER_PIN, code_received);
+sender            snd(SENDER_PIN);
+OneWire           onewire(DS18B20_PIN);
+DallasTemperature insidetemp(&onewire);
 
 void setup()
 {
   Serial.begin(230400);
   rcv.start();
+  insidetemp.begin();
+  insidetemp.setResolution(12);
 }
 
 void loop()
 {
   unsigned long timestamp = millis();
 
-  // outside temperature
+  // outside temperature, received by RF433
   if ( timestamp - outsideTimestamp > TEMP_VALIDITY)
   {
     outsideTemperature = INVALID_TEMP;
@@ -63,6 +70,20 @@ void loop()
     DEBUGONLY(Serial.println(outsideTemperature));
     outsidePreviousTemperature = outsideTemperature;
     // TODO: Update screen here.
+  }
+
+  // Inside temperature, measured locally
+  if ( timestamp - insideTimestamp > MEASURE_INTERVAL )
+  {
+    insidetemp.requestTemperatures();
+    int temp = insidetemp.getTempCByIndex(0) * 10;
+    if ( temp != insideTemperature )
+    {
+      insideTemperature = temp;
+      DEBUGONLY(Serial.print("Inside temp changed to "));
+      DEBUGONLY(Serial.println(insideTemperature));
+      // TODO: Start action based on inside temperature change.
+    }
   }
 
   // Test code
