@@ -13,11 +13,20 @@
 #define RECEIVER_PIN 5
 #define DS18B20_PIN  4
 
-#define INVALID_TEMP      0xFFFF
+#define INVALID_TEMP      -1000
 #define TEMP_VALIDITY     300000
 #define MEASURE_INTERVAL   10000
 
+// Temp Display
+#define DISPLAY_ADDRESS 0x3C
+#define SDA_PIN 14
+#define SCL_PIN 12
+#include <SSD1306Wire.h>
+SSD1306Wire  display(DISPLAY_ADDRESS, SDA_PIN, SCL_PIN);
+
 // The values we preserve
+bool          displayChanged = true;
+bool          controlValuesChanged = true;
 int           outsideTemperature = INVALID_TEMP;
 int           outsidePreviousTemperature = INVALID_TEMP;
 unsigned long outsideTimestamp  = 0; // millis
@@ -53,6 +62,24 @@ void setup()
   rcv.start();
   insidetemp.begin();
   insidetemp.setResolution(12);
+  // Temp Display
+  display.init();
+  display.flipScreenVertically();
+}
+
+void ConcatTemp(int temp, String& str)
+{
+  if ( temp != INVALID_TEMP )
+  {
+    str.concat(temp / 10);
+    str.concat(".");
+    str.concat(temp % 10);
+  } 
+  else
+  {
+    str.concat("--.-");
+  }
+  
 }
 
 void loop()
@@ -60,30 +87,48 @@ void loop()
   unsigned long timestamp = millis();
 
   // outside temperature, received by RF433
-  if ( timestamp - outsideTimestamp > TEMP_VALIDITY)
+  if ( outsideTemperature != INVALID_TEMP && timestamp - outsideTimestamp > TEMP_VALIDITY)
   {
     outsideTemperature = INVALID_TEMP;
+    displayChanged = true;
   }
   if ( outsidePreviousTemperature != outsideTemperature )
   {
+    outsidePreviousTemperature = outsideTemperature;
+    displayChanged = true;
     DEBUGONLY(Serial.print("Outside temp changed to "));
     DEBUGONLY(Serial.println(outsideTemperature));
-    outsidePreviousTemperature = outsideTemperature;
-    // TODO: Update screen here.
   }
 
   // Inside temperature, measured locally
   if ( timestamp - insideTimestamp > MEASURE_INTERVAL )
   {
+    insideTimestamp = timestamp;
     insidetemp.requestTemperatures();
     int temp = insidetemp.getTempCByIndex(0) * 10;
     if ( temp != insideTemperature )
     {
       insideTemperature = temp;
+      displayChanged = true;
       DEBUGONLY(Serial.print("Inside temp changed to "));
       DEBUGONLY(Serial.println(insideTemperature));
-      // TODO: Start action based on inside temperature change.
     }
+  }
+
+  if ( displayChanged )
+  {
+    // Temp Display
+    display.clear();
+    display.setFont(ArialMT_Plain_24);
+    String str;
+    ConcatTemp(insideTemperature, str);
+    display.drawString(0, 0, str);
+    str = "Buiten: ";
+    ConcatTemp(outsideTemperature, str);
+    display.setFont(ArialMT_Plain_10);
+    display.drawString(0, 24, str);
+    display.display();
+    displayChanged = false;
   }
 
   // Test code
