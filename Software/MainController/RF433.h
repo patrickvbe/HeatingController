@@ -4,6 +4,7 @@ const int SMARTWARES = 0;
 const int WEATHERSTATION = 1;
 const int CONRADRSL = 2;
 const int ELRO = 3;
+const int PUMP_CONTROLLER = 4;
 
 // The first threshold is when we start recording, the second is the smalles valid value while recording.
 // The Smartwares transmitter is a nightmare. It's pulses are often so short they blend in with the background noise...

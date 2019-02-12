@@ -1,6 +1,7 @@
-#include "RF433.h"
 #include <OneWire.h>
 #include <DallasTemperature.h>
+#include "RF433.h"
+#include "InterUnitCommunication.h"
 
 #define DEBUG;
 #ifdef DEBUG
@@ -13,20 +14,25 @@
 #define RECEIVER_PIN 5
 #define DS18B20_PIN  4
 
-#define INVALID_TEMP      -1000
-#define TEMP_VALIDITY     300000
-#define MEASURE_INTERVAL   10000
+const int INVALID_TEMP =     -1000;
+#define   TEMP_VALIDITY     300000
+#define   MEASURE_INTERVAL   10000
 
 // Temp Display
 #define DISPLAY_ADDRESS 0x3C
 #define SDA_PIN 14
 #define SCL_PIN 12
 #include <SSD1306Wire.h>
+#include "Open_Sans_Condensed_Bold_40.h"
 SSD1306Wire  display(DISPLAY_ADDRESS, SDA_PIN, SCL_PIN);
 
 // The values we preserve
 bool          displayChanged = true;
 bool          controlValuesChanged = true;
+bool          wantedPumpStatus = false;
+bool          feedbackPumpStatus = false;
+int           pumpForceTime = 0;
+int           heatingTemperature = INVALID_TEMP;
 int           outsideTemperature = INVALID_TEMP;
 int           outsidePreviousTemperature = INVALID_TEMP;
 unsigned long outsideTimestamp  = 0; // millis
@@ -110,23 +116,36 @@ void loop()
     {
       insideTemperature = temp;
       displayChanged = true;
+      controlValuesChanged = true;
       DEBUGONLY(Serial.print("Inside temp changed to "));
       DEBUGONLY(Serial.println(insideTemperature));
     }
+  }
+
+  if ( controlValuesChanged )
+  {
+    
   }
 
   if ( displayChanged )
   {
     // Temp Display
     display.clear();
-    display.setFont(ArialMT_Plain_24);
+    display.setTextAlignment(TEXT_ALIGN_LEFT);
+    display.setFont(Open_Sans_Condensed_Bold_40);
+    //display.setFont(ArialMT_Plain_24);
     String str;
     ConcatTemp(insideTemperature, str);
     display.drawString(0, 0, str);
-    str = "Buiten: ";
+    display.setTextAlignment(TEXT_ALIGN_RIGHT);
+    str = "";
     ConcatTemp(outsideTemperature, str);
-    display.setFont(ArialMT_Plain_10);
-    display.drawString(0, 24, str);
+    display.drawString(128, 0, str);
+    display.setTextAlignment(TEXT_ALIGN_LEFT);
+    display.setFont(ArialMT_Plain_16);
+    display.drawString(0, 48, "CV: 45");
+    display.setTextAlignment(TEXT_ALIGN_RIGHT);
+    display.drawString(128, 48, "P: aan?");
     display.display();
     displayChanged = false;
   }

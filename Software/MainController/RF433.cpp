@@ -19,7 +19,8 @@ static const Protocol PROTOCOLS[] = {
     Protocol{130, 128, 0, 0, 300,  300,  300, 1200, 300, 10000},    // Smartwares (Action)
     Protocol{ 74,  70, 0, 0, 500,  950,  500, 1950, 550,  3850},    // Weatherstation
     Protocol{ 66,  64, 0, 0, 600, 1200, 1200,  600, 600,  7000},    // Conrad RSL
-    Protocol{ 50,  48, 0, 0, 400,  900, 1050,  250, 400, 10100}     // Elro
+    Protocol{ 50,  48, 0, 0, 400,  900, 1050,  250, 400, 10100},    // Elro
+    Protocol{ 13,  12, 0, 0, 500,  500,  500, 1000, 400, 10000}     // PUMP_CONTROLLER, my own :-)
 };
 
 
