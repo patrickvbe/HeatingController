@@ -14,9 +14,10 @@
 #define RECEIVER_PIN 5
 #define DS18B20_PIN  4
 
-const int INVALID_TEMP =     -1000;
-#define   TEMP_VALIDITY     300000
-#define   MEASURE_INTERVAL   10000
+const int INVALID_TEMP =       -1000;
+#define   TEMP_VALIDITY       300000
+#define   MEASURE_INTERVAL     10000
+#define   FORCE_TIME_DURATION 300000
 
 // Temp Display
 #define DISPLAY_ADDRESS 0x3C
@@ -27,12 +28,12 @@ const int INVALID_TEMP =     -1000;
 SSD1306Wire  display(DISPLAY_ADDRESS, SDA_PIN, SCL_PIN);
 
 // The values we preserve
-bool          displayChanged = true;
-bool          controlValuesChanged = true;
 bool          wantedPumpStatus = false;
-bool          feedbackPumpStatus = false;
-int           pumpForceTime = 0;
-int           heatingTemperature = INVALID_TEMP;
+InterUnitCommunication  pumpFeedback(0);
+unsigned long pumpFeedbackTimestamp = 0;
+unsigned long pumpReceived = 0;
+unsigned long pumpReceivedTimestamp = 0;
+int           pumpForceTime = 0;  // End time in ms
 int           outsideTemperature = INVALID_TEMP;
 int           outsidePreviousTemperature = INVALID_TEMP;
 unsigned long outsideTimestamp  = 0; // millis
@@ -65,6 +66,7 @@ DallasTemperature insidetemp(&onewire);
 void setup()
 {
   Serial.begin(230400);
+  pumpFeedback.temperature = INVALID_TEMP;
   rcv.start();
   insidetemp.begin();
   insidetemp.setResolution(12);
@@ -73,6 +75,7 @@ void setup()
   display.flipScreenVertically();
 }
 
+// Format a temperature in 10ths of degrees to a nice string.
 void ConcatTemp(int temp, String& str)
 {
   if ( temp != INVALID_TEMP )
@@ -91,12 +94,13 @@ void ConcatTemp(int temp, String& str)
 void loop()
 {
   unsigned long timestamp = millis();
+  bool displayChanged = true;
+  bool controlValuesChanged = true;
 
   // outside temperature, received by RF433
   if ( outsideTemperature != INVALID_TEMP && timestamp - outsideTimestamp > TEMP_VALIDITY)
   {
     outsideTemperature = INVALID_TEMP;
-    displayChanged = true;
   }
   if ( outsidePreviousTemperature != outsideTemperature )
   {

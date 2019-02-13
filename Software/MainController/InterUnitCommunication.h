@@ -4,24 +4,32 @@ class InterUnitCommunication
 {
   InterUnitCommunication(unsigned long received_code)
   {
-    code = (int)received_code;
-    isValid = (code & 3) == CalcChecksum();
-    temperature  = code >> 4;
-    pumpOn       = (code & 8) != 0;
-    pumpForcedOn = (code & 4) != 0;
+    Code(received_code);
   }
 
-  InterUnitCommunication(int temperature /* in tenths of C */, bool pumpOn, bool pumpForced)
+  void Code(unsigned long received_code)
   {
-    code = (temperature / 5) << 4 | pumpOn ? 8 : 0 | pumpForced ? 4 : 0;
-    code |= CalcChecksum();
+    code         = received_code;
+    unitCode     = (code >> 12) & 0xFFF;      // 12 bit unit code
+    temperature  = ((code >>  4) & 0xFF) * 5; //  8 bit temperature in half degrees
+    pumpOn       = (code & 8) != 0;           //  1 bit pump status
+    pumpForcedOn = (code & 4) != 0;           //  1 bit pump-is-forced
+    isValid      = (code & 3) == CalcChecksum(code); // 2-bit 'checksum'
   }
 
-  unsigned long CalcChecksum()
+  static unsigned long CalculateCode(const int unitCode,
+                                     const int temperature /* in tenths of C */,
+                                     bool pumpOn, bool pumpForced)
+  {
+    code = (unitCode << 12) | (temperature / 5) << 4 | pumpOn ? 8 : 0 | pumpForced ? 4 : 0;
+    return code | CalcChecksum(code);
+  }
+
+  static unsigned long CalcChecksum(code)
   {
     int value = code;
     int poorcrc = 0;
-    for ( int i = 5; i > 0; i--)
+    for ( int i = 11; i > 0; i--)
     {
       value >>= 2;
       poorcrc ^= value;
@@ -29,7 +37,8 @@ class InterUnitCommunication
     return poorcrc | 3;
   }
 
-  int   code;           // The code to send / received
+  unsigned long code;   // The code received
+  int   unitCode;       // Unique code to identify the unit
   int   temperature;    // The temperature in tenths of Celcius (transmitted as half degrees possitive only)
   bool  pumpOn;         // Is / should the pump (be) on.
   bool  pumpForcedOn;   // Is the pump forcibly on (because it hasn't run for x hours). Only from pump to controller.
