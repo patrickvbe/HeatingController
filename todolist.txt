@@ -1,0 +1,16 @@
+Basic functionality
+
+☐ Add slave unit
+☐ Add control logic :-)
+☐ Add hardware design (fritzing?) to the repository
+
+Bugs
+
+Features (in order of priority)
+
+☐ Add time + time-sync (get time from http header)
+☐ Add automatic DST change
+☐ Add web-server for configuration, write the configuration to flash
+☐ Add logging with access through the web server
+☐ See if a bigger TFT instead of an OLED provides more functionality
+☐ Add garbage schedule to the display (if a bigger one is used)
