@@ -1,7 +1,7 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
-#include <RF433.h>
-#include <InterUnitCommunication.h>
+#include "src/RF433/RF433.h"
+#include "src/InterUnitCommunication/InterUnitCommunication.h"
 
 #define DEBUG;
 #ifdef DEBUG
@@ -10,13 +10,13 @@
   #define DEBUGONLY()
 #endif
 
-#define PUMP_PIN   2
-#define SENDER_PIN   4
-#define RECEIVER_PIN 5
+#define PUMP_PIN     3
+#define SENDER_PIN   5
+#define RECEIVER_PIN 2
 #define DS18B20_PIN  9
 
 const int INVALID_TEMP =       -1000;
-#define   TEMP_VALIDITY       300000
+#define   MASTER_VALIDITY     300000
 #define   MEASURE_INTERVAL     10000
 #define   FORCE_TIME_DURATION 300000
 
@@ -32,18 +32,11 @@ unsigned long waterTimestamp = 0;
 // Interrupt routine for RF433 communication.
 void code_received(int protocol, unsigned long code, unsigned long timestamp)
 {
-  if ( protocol == WEATHERSTATION)
+  if ( protocol == PUMP_CONTROLLER )
   {
-    outsideTemperature = receiver::convertCodeToTemp(code);
-    outsideTimestamp = millis();
+    masterReceived = code;
+    masterReceivedTimestamp = timestamp;
   }
-  // Serial.print("Protocol: ");
-  // Serial.print(protocol);
-  // Serial.print(", code:");
-  // Serial.print(code, BIN);
-  // Serial.print(" / ");
-  // Serial.print(code, HEX);
-  // Serial.println();
 }
 
 // The objects / sensors we have
@@ -53,6 +46,8 @@ DallasTemperature watertemp(&onewire);
 
 void setup()
 {
+  pinMode(PUMP_PIN, OUTPUT);
+  digitalWrite(PUMP_PIN, HIGH); // Turn the pump off initially (the relais is inverse controlled).
   Serial.begin(230400);
   masterCommand.temperature = INVALID_TEMP;
   rcv.start();
@@ -63,7 +58,7 @@ void setup()
 void loop()
 {
   unsigned long timestamp = millis();
-  bool controlValuesChanged = true;
+  bool controlValuesChanged = false;
 
   // Inside temperature, measured locally
   if ( timestamp - waterTimestamp > MEASURE_INTERVAL )
@@ -80,9 +75,25 @@ void loop()
     }
   }
 
+  if ( masterReceivedTimestamp != masterCommandTimestamp )
+  {
+    masterCommand.Code(masterReceived);
+    masterCommandTimestamp = masterReceivedTimestamp;
+    controlValuesChanged = true;
+    DEBUGONLY(Serial.print("Master command: "));
+    DEBUGONLY(Serial.print(masterCommand.temperature));
+    DEBUGONLY(Serial.print(" "));
+    DEBUGONLY(Serial.print(masterCommand.pumpOn));
+    DEBUGONLY(Serial.print(" "));
+    DEBUGONLY(Serial.println(masterCommand.isValid));
+  }
+
   if ( controlValuesChanged )
   {
-    
+    if ( waterTemperature != INVALID_TEMP )
+    {
+      
+    }    
   }
 
   // Test code

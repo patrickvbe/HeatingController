@@ -1,7 +1,7 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
-#include <RF433.h>
-#include <InterUnitCommunication.h>
+#include "src/RF433/RF433.h"
+#include "src/InterUnitCommunication/InterUnitCommunication.h"
 
 #define DEBUG;
 #ifdef DEBUG
