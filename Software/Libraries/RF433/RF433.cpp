@@ -14,7 +14,7 @@ struct Protocol
   unsigned int end_low;
 };
 
-static const Protocol PROTOCOLS[] = {
+static const Protocol PROTOCOLS[] PROGMEM = {
     //Protocol{132, 130, 300, 2500, 300,  300,  300, 1200, 300, 10000},     // Smartwares (Action)
     Protocol{130, 128, 0, 0, 300,  300,  300, 1200, 300, 10000},    // Smartwares (Action)
     Protocol{ 74,  70, 0, 0, 500,  950,  500, 1950, 550,  3850},    // Weatherstation

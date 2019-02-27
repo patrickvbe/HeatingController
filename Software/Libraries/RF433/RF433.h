@@ -13,7 +13,7 @@ const int PUMP_CONTROLLER = 4;
 const unsigned long DURATIONTHRESHOLD1 = 275;
 const unsigned long DURATIONTHRESHOLD2 = 225;
 const unsigned long SYNCPULSETHRESHOLD = 3000;
-const int MAXRECORD = 150;
+const int MAXRECORD = 80;
 
 class sender
 {
