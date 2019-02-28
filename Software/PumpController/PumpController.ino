@@ -19,17 +19,18 @@
 const int INVALID_TEMP = -1000;
 
 #ifdef DEBUG
-#define MASTER_VALIDITY      30000
-#define MEASURE_INTERVAL      5000
-#define FORCE_TIME_DURATION  30000
-#define MAX_OFF_PERIOD      120000
+#define MINIMUM_COMMUNICATION_INTERVAL  20000
+#define MASTER_VALIDITY                 30000
+#define MEASURE_INTERVAL                 4000
+#define FORCE_TIME_DURATION             30000
+#define MAX_OFF_PERIOD                 120000
 #else
-#define MASTER_VALIDITY     300000
-#define MEASURE_INTERVAL     60000
-#define FORCE_TIME_DURATION 300000
-#define MAX_OFF_PERIOD      1000*60*60*24
+#define MINIMUM_COMMUNICATION_INTERVAL 240000
+#define MASTER_VALIDITY                300000
+#define MEASURE_INTERVAL                10000
+#define FORCE_TIME_DURATION            300000
+#define MAX_OFF_PERIOD          1000*60*60*24
 #endif
-#define MINIMUM_COMMUNICATION_INTERVAL 5 * MEASURE_INTERVAL
 
 // The values we preserve
 unsigned long lastMasterReceivedTimestamp = 0;  // Timestamp of the last processed master command
