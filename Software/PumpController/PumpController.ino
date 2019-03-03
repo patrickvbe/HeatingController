@@ -77,6 +77,18 @@ void setup()
   watertemp.setResolution(10);
 }
 
+void LogTime()
+{
+  unsigned long totalseconds = millis()/1000;
+  unsigned long seconds = totalseconds % 60;
+  unsigned long minutes = totalseconds / 60;
+  Serial.print(minutes);
+  Serial.print(F(":"));
+  if ( seconds < 10 ) Serial.print("0");
+  Serial.print(seconds);
+  Serial.print(' ');
+}
+
 void TurnPumpOn()
 {
   isPumpOn = true;
@@ -97,7 +109,7 @@ void loop()
   unsigned long timestamp = millis(); // Freeze the time.
 
   // Water temperature, measured locally
-  if (timestamp - waterTimestamp > MEASURE_INTERVAL)
+  if ( (timestamp - waterTimestamp) > MEASURE_INTERVAL)
   {
     waterTimestamp = timestamp;
     watertemp.requestTemperatures();
@@ -106,6 +118,7 @@ void loop()
     {
       waterTemperature = temp;
       updateMaster = true;
+      DEBUGONLY(LogTime());
       DEBUGONLY(Serial.print(F("Water temp changed to ")));
       DEBUGONLY(Serial.println(waterTemperature));
     }
@@ -117,15 +130,16 @@ void loop()
     InterUnitCommunication received(masterReceived);
     if (received.isValid && received.unitCode == UNIT_CODE)
     {
+      DEBUGONLY(LogTime());
+      DEBUGONLY(Serial.print(F("Received valid master communication: ")));
+      DEBUGONLY(Serial.print(received.temperature));
+      DEBUGONLY(Serial.print(" "));
+      DEBUGONLY(Serial.println(received.pumpOn));
       inFallbackMode = false;
       lastMasterReceivedTimestamp = masterReceivedTimestamp;
       // temperature: the setpoint for the pump to start
       // pumpOn:      the requested pump status
       // The others are ignored.
-      DEBUGONLY(Serial.print(F("Received valid master communication: ")));
-      DEBUGONLY(Serial.print(waterTemperatureSetpoint));
-      DEBUGONLY(Serial.print(" "));
-      DEBUGONLY(Serial.println(received.pumpOn));
       waterTemperatureSetpoint = received.temperature;
       if (received.pumpOn != isPumpOn && !isForcedOn )
       {
@@ -142,25 +156,28 @@ void loop()
   }
 
   // Force pump on if already off for the maximum period.
-  if ( !isPumpOn && timestamp - pumpOffTimestamp > MAX_OFF_PERIOD )
+  if ( !isPumpOn && (timestamp - pumpOffTimestamp) > MAX_OFF_PERIOD )
   {
     isForcedOn = true;
     ForcedOnTimestamp = timestamp;
     TurnPumpOn();
+    DEBUGONLY(LogTime());
     DEBUGONLY(Serial.println(F("Turned pump on after long idle period")));
   }
 
   // Also, turn it off again in forced mode after a set duration.
-  if ( isForcedOn && timestamp - ForcedOnTimestamp > FORCE_TIME_DURATION )
+  if ( isForcedOn && (timestamp - ForcedOnTimestamp) > FORCE_TIME_DURATION )
   {
     isForcedOn = false;
     TurnPumpOff();
-    DEBUGONLY(Serial.println(F("Turned pump of after forced on")));
+    DEBUGONLY(LogTime());
+    DEBUGONLY(Serial.println(F("Turned pump off after forced on")));
   }
 
   // If we don't receive anything from our master for a long time, go in fallback mode.
-  if ( !inFallbackMode && timestamp - lastMasterReceivedTimestamp > MASTER_VALIDITY )
+  if ( !inFallbackMode && (timestamp - lastMasterReceivedTimestamp) > MASTER_VALIDITY )
   {
+    DEBUGONLY(LogTime());
     DEBUGONLY(Serial.println(F("Switched to fallback mode")));
     inFallbackMode = true;
   }
@@ -177,12 +194,11 @@ void loop()
     }
     else
     {
-      if ( waterTemperature >= waterTemperatureSetpoint + 10)
+      if ( waterTemperature >= (waterTemperatureSetpoint + 10) )
       {
-        TurnPumpOff();
+        TurnPumpOn();
       }
     }
-    
   }
 
   // Update the master at least every MINIMUM_COMMUNICATION_INTERVAL ms.
@@ -194,10 +210,11 @@ void loop()
   // If needed, communicate our status to the master.
   if ( updateMaster )
   {
-    snd.send(PUMP_CONTROLLER, InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperature, isPumpOn, isForcedOn));
+    DEBUGONLY(LogTime());
+    DEBUGONLY(Serial.println(F("Send update to our master.")));
+    snd.send(PUMP_CONTROLLER, InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperature, isPumpOn, isForcedOn), 2);
     masterSendTimestamp = timestamp;
     updateMaster = false;    
-    DEBUGONLY(Serial.println(F("Send update to our master.")));
   }
 
   // Test code

@@ -13,11 +13,22 @@
 #define SENDER_PIN   2
 #define RECEIVER_PIN 5
 #define DS18B20_PIN  4
+#define UNIT_CODE 0xBAF
 
 const int INVALID_TEMP =       -1000;
-#define   TEMP_VALIDITY       300000
-#define   MEASURE_INTERVAL     10000
-#define   FORCE_TIME_DURATION 300000
+#ifdef DEBUG
+#define TEMP_VALIDITY                  300000
+#define MINIMUM_COMMUNICATION_INTERVAL  20000
+#define PUMP_VALIDITY                   30000
+#define MEASURE_INTERVAL                10000
+#define FORCE_TIME_DURATION             30000
+#else
+#define TEMP_VALIDITY                  300000
+#define MINIMUM_COMMUNICATION_INTERVAL 240000
+#define PUMP_VALIDITY                  300000
+#define MEASURE_INTERVAL                10000
+#define FORCE_TIME_DURATION            300000
+#endif
 
 // Temp Display
 #define DISPLAY_ADDRESS 0x3C
@@ -28,17 +39,23 @@ const int INVALID_TEMP =       -1000;
 SSD1306Wire  display(DISPLAY_ADDRESS, SDA_PIN, SCL_PIN);
 
 // The values we preserve
-bool          wantedPumpStatus = false;
-InterUnitCommunication  pumpFeedback(0);
-unsigned long pumpFeedbackTimestamp = 0;
 unsigned long pumpReceived = 0;
 unsigned long pumpReceivedTimestamp = 0;
+unsigned long pumpSendTimestamp = 0;
+int           waterTemperature  = INVALID_TEMP;
+bool          isPumpOn = false;
+bool          isPumpForced = false;
+bool          pumpNeedsOn = false;
+bool          pumpCommunicationOK = false;
+unsigned long LastPumpTimestamp = 0;
 int           pumpForceTime = 0;  // End time in ms
 int           outsideTemperature = INVALID_TEMP;
 int           outsidePreviousTemperature = INVALID_TEMP;
 unsigned long outsideTimestamp  = 0; // millis
 int           insideTemperature  = INVALID_TEMP;
 unsigned long insideTimestamp = 0;
+int waterTemperatureSetpoint = 200;             // Temperature setpoint to turn the pump on / off. Might be configurable in the future.
+int insideTemperatureSetpoint = 190;
 
 // Interrupt routine for RF433 communication.
 void code_received(int protocol, unsigned long code, unsigned long timestamp)
@@ -47,6 +64,11 @@ void code_received(int protocol, unsigned long code, unsigned long timestamp)
   {
     outsideTemperature = receiver::convertCodeToTemp(code);
     outsideTimestamp = millis();
+  }
+  if ( protocol == PUMP_CONTROLLER)
+  {
+    pumpReceivedTimestamp = timestamp;
+    pumpReceived = code;
   }
   // Serial.print("Protocol: ");
   // Serial.print(protocol);
@@ -66,13 +88,24 @@ DallasTemperature insidetemp(&onewire);
 void setup()
 {
   Serial.begin(230400);
-  pumpFeedback.temperature = INVALID_TEMP;
   rcv.start();
   insidetemp.begin();
   insidetemp.setResolution(12);
   // Temp Display
   display.init();
   display.flipScreenVertically();
+}
+
+void LogTime()
+{
+  unsigned long totalseconds = millis()/1000;
+  unsigned long seconds = totalseconds % 60;
+  unsigned long minutes = totalseconds / 60;
+  Serial.print(minutes);
+  Serial.print(F(":"));
+  if ( seconds < 10 ) Serial.print("0");
+  Serial.print(seconds);
+  Serial.print(' ');
 }
 
 // Format a temperature in 10ths of degrees to a nice string.
@@ -95,7 +128,8 @@ void loop()
 {
   unsigned long timestamp = millis();
   bool displayChanged = true;
-  bool controlValuesChanged = true;
+  bool controlValuesChanged = false;
+  bool sendToPump = false;
 
   // outside temperature, received by RF433
   if ( outsideTemperature != INVALID_TEMP && timestamp - outsideTimestamp > TEMP_VALIDITY)
@@ -106,8 +140,41 @@ void loop()
   {
     outsidePreviousTemperature = outsideTemperature;
     displayChanged = true;
+    DEBUGONLY(LogTime());
     DEBUGONLY(Serial.print("Outside temp changed to "));
     DEBUGONLY(Serial.println(outsideTemperature));
+  }
+
+  // Communication from pump controller
+  if ( pumpReceivedTimestamp != LastPumpTimestamp )
+  {
+    InterUnitCommunication pumpcomm(pumpReceived);
+    if ( pumpcomm.isValid && pumpcomm.unitCode == UNIT_CODE )
+    {
+      LastPumpTimestamp = pumpReceivedTimestamp;
+      pumpCommunicationOK = true;
+      if ( waterTemperature != pumpcomm.temperature || isPumpOn != pumpcomm.pumpOn )
+      {
+        controlValuesChanged = true;
+        displayChanged = true;
+        waterTemperature = pumpcomm.temperature;
+        isPumpOn = pumpcomm.pumpOn;
+      }
+      if ( isPumpForced != pumpcomm.pumpForcedOn )
+      {
+        isPumpForced = pumpcomm.pumpForcedOn;
+        displayChanged = true;
+      }
+      DEBUGONLY(LogTime());
+      DEBUGONLY(Serial.println("Received update from pump controller"));
+    }
+
+  }
+
+  if ( timestamp - LastPumpTimestamp > PUMP_VALIDITY )
+  {
+    pumpCommunicationOK = false;
+    waterTemperature = INVALID_TEMP;
   }
 
   // Inside temperature, measured locally
@@ -121,16 +188,53 @@ void loop()
       insideTemperature = temp;
       displayChanged = true;
       controlValuesChanged = true;
+      DEBUGONLY(LogTime());
       DEBUGONLY(Serial.print("Inside temp changed to "));
       DEBUGONLY(Serial.println(insideTemperature));
     }
   }
 
+  // The actual controlling actions.
   if ( controlValuesChanged )
   {
-    
+    if ( waterTemperature != INVALID_TEMP && insideTemperature != INVALID_TEMP )
+    {
+      if ( pumpNeedsOn )
+      {
+        if ( insideTemperature >= insideTemperatureSetpoint + 10 || waterTemperature <= waterTemperatureSetpoint )
+        {
+          pumpNeedsOn = false;
+          sendToPump = true;
+        }
+      }
+      else
+      {
+        if ( insideTemperature <= insideTemperatureSetpoint && waterTemperature >= waterTemperatureSetpoint + 10 )
+        {
+          pumpNeedsOn = true;
+          sendToPump = true;
+        }
+      }      
+    }
   }
 
+  // Update the pump at least every MINIMUM_COMMUNICATION_INTERVAL ms.
+  if ( !sendToPump && timestamp - pumpSendTimestamp > MINIMUM_COMMUNICATION_INTERVAL )
+  {
+    sendToPump = true;
+  }
+
+  // If needed, communicate our status to the master.
+  if ( sendToPump )
+  {
+    DEBUGONLY(LogTime());
+    DEBUGONLY(Serial.println(F("Send update to pump.")));
+    snd.send(PUMP_CONTROLLER, InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperatureSetpoint, pumpNeedsOn, isPumpForced /* ignored by pump */), 2);
+    pumpSendTimestamp = timestamp;
+    sendToPump = false;    
+  }
+
+  // Update the display for the user.
   if ( displayChanged )
   {
     // Temp Display
@@ -147,9 +251,34 @@ void loop()
     display.drawString(128, 0, str);
     display.setTextAlignment(TEXT_ALIGN_LEFT);
     display.setFont(ArialMT_Plain_16);
-    display.drawString(0, 48, "CV: 45");
+    if ( waterTemperature != INVALID_TEMP )
+    {
+      str = "CV: ";
+      str.concat(waterTemperature);
+    }
+    else
+    {
+      str = "CV: --";
+    }
+    display.drawString(0, 46, str);
     display.setTextAlignment(TEXT_ALIGN_RIGHT);
-    display.drawString(128, 48, "P: aan?");
+    if ( pumpCommunicationOK )
+    {
+      str = "P: ";
+      if ( isPumpOn )
+      {
+        if ( isPumpForced ) str.concat("AAN");
+        else str.concat("aan");
+      }
+      else str.concat("uit");
+      if ( !pumpNeedsOn ) str.concat("!");
+    }
+    else
+    {
+      str = "p-fout";
+    }
+    display.drawString(128, 46, str);
+    
     display.display();
     displayChanged = false;
   }
