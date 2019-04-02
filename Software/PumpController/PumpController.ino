@@ -54,6 +54,9 @@ void code_received(int protocol, unsigned long code, unsigned long timestamp)
   {
     masterReceived = code;
     masterReceivedTimestamp = timestamp;
+    DEBUGONLY(LogTime());
+    DEBUGONLY(Serial.print(F("Received from master: ")));
+    DEBUGONLY(Serial.println(code, HEX));
   }
 }
 
@@ -212,7 +215,9 @@ void loop()
   {
     DEBUGONLY(LogTime());
     DEBUGONLY(Serial.println(F("Send update to our master.")));
-    snd.send(PUMP_CONTROLLER, InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperature, isPumpOn, isForcedOn), 2);
+    rcv.stop();
+    snd.send(PUMP_CONTROLLER, InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperature, isPumpOn, isForcedOn), 10);
+    rcv.start();
     masterSendTimestamp = timestamp;
     updateMaster = false;    
   }
@@ -222,13 +227,22 @@ void loop()
   if (cin == '1')
   {
     rcv.stop();
-    snd.send(ELRO, 0x144551);
+    snd.send(ELRO, 0x144551, 10);
     rcv.start();
+    Serial.println("Send on");
   }
   else if (cin == '0')
   {
     rcv.stop();
-    snd.send(ELRO, 0x144554);
+    snd.send(ELRO, 0x144554, 10);
     rcv.start();
+    Serial.println("Send off");
+  }
+  else if (cin == 'm')
+  {
+    rcv.stop();
+    snd.send(PUMP_CONTROLLER, InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperature, isPumpOn, isForcedOn), 10);
+    rcv.start();
+    Serial.println("Send master");
   }
 }

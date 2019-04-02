@@ -41,7 +41,8 @@ SSD1306Wire  display(DISPLAY_ADDRESS, SDA_PIN, SCL_PIN);
 // The values we preserve
 unsigned long pumpReceived = 0;                             // Raw code received from the pump unit.
 unsigned long pumpReceivedTimestamp = 0;                    // Timestamp of reception from the pump unit.
-unsigned long LastPumpTimestamp = 0;                        // The last time we received valid information from the pump unit.
+unsigned long LastPumpTimestamp = 0;                        // The last time we received information from the pump unit.
+unsigned long LastValidPumpTimestamp = 0;                   // The last time we received valid information from the pump unit.
 unsigned long pumpSendTimestamp = 0;                        // Timestamp of last information send to the pump unit.
 int           waterTemperature  = INVALID_TEMP;             // CV water temperature received from the pump unit.
 bool          isPumpOn = false;                             // Pump status received from the pump unit.
@@ -63,19 +64,21 @@ void code_received(int protocol, unsigned long code, unsigned long timestamp)
   {
     outsideTemperature = receiver::convertCodeToTemp(code);
     outsideTimestamp = timestamp;
+    Serial.print("Outside: ");
+    Serial.println(outsideTemperature);
   }
   if ( protocol == PUMP_CONTROLLER)
   {
     pumpReceivedTimestamp = timestamp;
     pumpReceived = code;
   }
-  // Serial.print("Protocol: ");
-  // Serial.print(protocol);
-  // Serial.print(", code:");
-  // Serial.print(code, BIN);
-  // Serial.print(" / ");
-  // Serial.print(code, HEX);
-  // Serial.println();
+   Serial.print("Protocol: ");
+   Serial.print(protocol);
+   Serial.print(", code:");
+   Serial.print(code, BIN);
+   Serial.print(" / ");
+   Serial.print(code, HEX);
+   Serial.println();
 }
 
 // The objects / sensors we have
@@ -86,7 +89,7 @@ DallasTemperature insidetemp(&onewire);
 
 void setup()
 {
-  Serial.begin(230400);
+  Serial.begin(115200);
   rcv.start();
   insidetemp.begin();
   insidetemp.setResolution(12);
@@ -132,6 +135,13 @@ void loop()
   // outside temperature, received by RF433
   if ( outsideTemperature != INVALID_TEMP && timestamp - outsideTimestamp > TEMP_VALIDITY)
   {
+    DEBUGONLY(LogTime());
+    DEBUGONLY(Serial.print("Invalidated outside T from "));
+    DEBUGONLY(Serial.print(outsideTemperature));
+    DEBUGONLY(Serial.print(" "));
+    DEBUGONLY(Serial.print(timestamp));
+    DEBUGONLY(Serial.print(" "));
+    DEBUGONLY(Serial.println(outsideTimestamp));
     outsideTemperature = INVALID_TEMP;
   }
   if ( outsidePreviousTemperature != outsideTemperature )
@@ -146,10 +156,11 @@ void loop()
   // Communication from pump controller
   if ( pumpReceivedTimestamp != LastPumpTimestamp )
   {
+    LastPumpTimestamp = pumpReceivedTimestamp;
     InterUnitCommunication pumpcomm(pumpReceived);
     if ( pumpcomm.isValid && pumpcomm.unitCode == UNIT_CODE )
     {
-      LastPumpTimestamp = pumpReceivedTimestamp;
+      LastValidPumpTimestamp = pumpReceivedTimestamp;
       pumpCommunicationOK = true;
       if ( waterTemperature != pumpcomm.temperature )
       {
@@ -171,11 +182,21 @@ void loop()
       DEBUGONLY(LogTime());
       DEBUGONLY(Serial.println("Received update from pump controller"));
     }
+    else
+    {
+      DEBUGONLY(LogTime());
+      DEBUGONLY(Serial.println("Invalid pump message"));
+    }
 
   }
 
-  if ( pumpCommunicationOK && timestamp - LastPumpTimestamp > PUMP_VALIDITY )
+  if ( pumpCommunicationOK && timestamp - LastValidPumpTimestamp > PUMP_VALIDITY )
   {
+    DEBUGONLY(LogTime());
+    DEBUGONLY(Serial.print("Invalidated pump communication "));
+    DEBUGONLY(Serial.print(timestamp));
+    DEBUGONLY(Serial.print(" "));
+    DEBUGONLY(Serial.println(LastValidPumpTimestamp));
     pumpCommunicationOK = false;
     waterTemperature = INVALID_TEMP;
   }
@@ -234,7 +255,9 @@ void loop()
   {
     DEBUGONLY(LogTime());
     DEBUGONLY(Serial.println(F("Send update to pump.")));
-    snd.send(PUMP_CONTROLLER, InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperatureSetpoint, pumpNeedsOn, isPumpForced /* ignored by pump */), 2);
+    rcv.stop();
+    snd.send(PUMP_CONTROLLER, InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperatureSetpoint, pumpNeedsOn, isPumpForced /* ignored by pump */), 10);
+    rcv.start();
     pumpSendTimestamp = timestamp;
     sendToPump = false;    
   }
@@ -302,6 +325,14 @@ void loop()
   {
     rcv.stop();
     snd.send(ELRO, 0x144554);
+    rcv.start();
+  }
+  else if (cin == 'p')
+  {
+    DEBUGONLY(LogTime());
+    DEBUGONLY(Serial.println(F("Force to pump.")));
+    rcv.stop();
+    snd.send(PUMP_CONTROLLER, InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperatureSetpoint, pumpNeedsOn, isPumpForced /* ignored by pump */), 2);
     rcv.start();
   }
 }

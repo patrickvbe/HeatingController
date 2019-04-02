@@ -18,11 +18,12 @@ class InterUnitCommunication
       isValid      = (code & 3) == CalcChecksum(code); // 2-bit 'checksum'
     }
 
-    static unsigned long CalculateCode(const int unitCode,
-                                      const int temperature /* in tenths of C */,
+    static unsigned long CalculateCode(const unsigned long unitCode,
+                                      const unsigned long temperature /* in tenths of C */,
                                       bool pumpOn, bool pumpForced)
     {
-      unsigned long code = (unitCode << 12) | (temperature / 5) << 4 | pumpOn ? 8 : 0 | pumpForced ? 4 : 0;
+      unsigned long code = (unitCode << 12) | ((temperature / 5) << 4) | (pumpOn ? 8UL : 0UL) | (pumpForced ? 4UL : 0UL);
+        Serial.println(code,HEX);
       return code | CalcChecksum(code);
     }
 
@@ -35,7 +36,7 @@ class InterUnitCommunication
         value >>= 2;
         poorcrc ^= value;
       }
-      return poorcrc | 3;
+      return poorcrc & 3UL;
     }
 
     unsigned long code;   // The code received

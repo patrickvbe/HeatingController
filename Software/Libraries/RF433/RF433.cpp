@@ -2,8 +2,8 @@
 
 struct Protocol
 {
-  byte signallength;
-  byte relevantlength;
+  int signallength;
+  int relevantlength;
   unsigned int start_high;
   unsigned int start_low;
   unsigned int zero_high;
@@ -14,13 +14,13 @@ struct Protocol
   unsigned int end_low;
 };
 
-static const Protocol PROTOCOLS[] PROGMEM = {
+static const Protocol PROTOCOLS[] = {
     //Protocol{132, 130, 300, 2500, 300,  300,  300, 1200, 300, 10000},     // Smartwares (Action)
     Protocol{130, 128, 0, 0, 300,  300,  300, 1200, 300, 10000},    // Smartwares (Action)
     Protocol{ 74,  70, 0, 0, 500,  950,  500, 1950, 550,  3850},    // Weatherstation
     Protocol{ 66,  64, 0, 0, 600, 1200, 1200,  600, 600,  7000},    // Conrad RSL
     Protocol{ 50,  48, 0, 0, 400,  900, 1050,  250, 400, 10100},    // Elro
-    Protocol{ 25,  24, 0, 0, 500,  500,  500, 1000, 500, 10000}     // PUMP_CONTROLLER, my own :-)
+    Protocol{ 50,  48, 0, 0, 500,  500,  500, 1000, 500, 10000}     // PUMP_CONTROLLER, my own :-)
 };
 
 sender::sender(const int sndpin)
@@ -32,22 +32,24 @@ sender::sender(const int sndpin)
 
 void sender::send(const int protocol_id, const unsigned long code, int repeat)
 {
-  const Protocol &protocol = PROTOCOLS[protocol_id];
+  const Protocol& protocol = PROTOCOLS[protocol_id];
   while (repeat-- > 0)
   {
     int bitnr = (protocol.signallength / 2 - 1);
-    unsigned long bitmask = 1 << (bitnr - 1);
+    unsigned long bitmask = 1UL << (bitnr - 1);
     while (bitnr-- > 0)
     {
       digitalWrite(pin, HIGH);
       if (code & bitmask)
       {
+        //Serial.print("1");
         delayMicroseconds(protocol.one_high);
         digitalWrite(pin, LOW);
         delayMicroseconds(protocol.one_low);
       }
       else
       {
+        //Serial.print("0");
         delayMicroseconds(protocol.zero_high);
         digitalWrite(pin, LOW);
         delayMicroseconds(protocol.zero_low);
@@ -59,6 +61,7 @@ void sender::send(const int protocol_id, const unsigned long code, int repeat)
     digitalWrite(pin, LOW);
     if ( protocol.end_low > 2000 ) delay(protocol.end_low / 1000);
     else delayMicroseconds(protocol.end_low);
+    //Serial.println("");
   }
 }
 
@@ -101,7 +104,7 @@ void receiver::sread_interrupt()
 
 bool receiver::decode()
 {
-  for (int idx = 0; idx < sizeof(PROTOCOLS); idx++)
+  for (int idx = 0; idx < (sizeof(PROTOCOLS) / sizeof(Protocol)); idx++)
   {
     if (decodeprotocol(idx))
     {
@@ -151,7 +154,7 @@ bool receiver::decodeprotocol(const int protocol_id)
     else if (onehl < high && high < onehh && onell < low && low < onelh)
     {
       code <<= 1;
-      code |= 1;
+      code |= 1UL;
     }
     else
     {
@@ -164,11 +167,11 @@ bool receiver::decodeprotocol(const int protocol_id)
   }
   // Pass it to the user.
   code = code;
-  code_timestamp = last_timestamp;
+  code_timestamp = millis();
   code_protocol = protocol_id;
   if (callback)
   {
-    callback(protocol_id, code, code-code_timestamp);
+    callback(protocol_id, code, code_timestamp);
   }
   return true;
 }
@@ -178,13 +181,13 @@ void receiver::read_interrupt()
   unsigned long timestamp = micros();
   unsigned long duration = timestamp - last_timestamp;
   last_timestamp = timestamp;
+  // Serial.println("i");
 
   // Pulses shorter than 250us are usually noise. But my smartwares remote drifts to almost 225us...
-  if (duration > DURATIONTHRESHOLD1 or (duration > DURATIONTHRESHOLD2 and counter > 0))
+  if (duration > DURATIONTHRESHOLD1 || (duration > DURATIONTHRESHOLD2 && counter > 0))
   {
-    data[counter] = duration;
-    counter += 1;
-    if (duration > SYNCPULSETHRESHOLD or counter == MAXRECORD)
+    data[counter++] = duration;
+    if (duration > SYNCPULSETHRESHOLD || counter == MAXRECORD)
     {
       if (counter > 10)
       {
