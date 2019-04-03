@@ -89,7 +89,7 @@ void receiver::start()
 {
   last_timestamp = micros();
   counter = 0;
-  attachInterrupt(pin, sread_interrupt, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(pin), sread_interrupt, CHANGE);
 }
 
 void receiver::stop()
