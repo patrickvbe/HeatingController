@@ -49,9 +49,9 @@ public:
   int pin;
 
   // This is where the code will be (usefull if you don't use the callback)
-  unsigned long code = 0;
-  unsigned long code_timestamp = 0;
-  int           code_protocol = -1;
+  volatile unsigned long code = 0;
+  volatile unsigned long code_timestamp = 0;
+  volatile int           code_protocol = -1;
 
 private:
 // Functionality
@@ -61,9 +61,9 @@ private:
   bool decodeprotocol(const int protocol_id);
 
 // Data members
-  int counter;
-  unsigned long data[MAXRECORD];
-  unsigned long last_timestamp;
+  volatile int counter;
+  volatile unsigned long data[MAXRECORD];
+  volatile unsigned long last_timestamp;
   received_callback callback;
   static receiver* me;  // No arguments allowed for the interrupt, so: it's me!
 };

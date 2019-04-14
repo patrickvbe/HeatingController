@@ -54,9 +54,9 @@ void code_received(int protocol, unsigned long code, unsigned long timestamp)
   {
     masterReceived = code;
     masterReceivedTimestamp = timestamp;
-    DEBUGONLY(LogTime());
-    DEBUGONLY(Serial.print(F("Received from master: ")));
-    DEBUGONLY(Serial.println(code, HEX));
+    //DEBUGONLY(LogTime());
+    //DEBUGONLY(Serial.print(F("Received from master: ")));
+    //DEBUGONLY(Serial.println(code, HEX));
   }
 }
 
@@ -216,7 +216,7 @@ void loop()
     DEBUGONLY(LogTime());
     DEBUGONLY(Serial.println(F("Send update to our master.")));
     rcv.stop();
-    snd.send(PUMP_CONTROLLER, InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperature, isPumpOn, isForcedOn), 10);
+    snd.send(PUMP_CONTROLLER, InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperature, isPumpOn, isForcedOn), 6);
     rcv.start();
     masterSendTimestamp = timestamp;
     updateMaster = false;    

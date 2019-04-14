@@ -256,7 +256,7 @@ void loop()
     DEBUGONLY(LogTime());
     DEBUGONLY(Serial.println(F("Send update to pump.")));
     rcv.stop();
-    snd.send(PUMP_CONTROLLER, InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperatureSetpoint, pumpNeedsOn, isPumpForced /* ignored by pump */), 10);
+    snd.send(PUMP_CONTROLLER, InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperatureSetpoint, pumpNeedsOn, isPumpForced /* ignored by pump */), 6);
     rcv.start();
     pumpSendTimestamp = timestamp;
     sendToPump = false;    
@@ -332,7 +332,7 @@ void loop()
     DEBUGONLY(LogTime());
     DEBUGONLY(Serial.println(F("Force to pump.")));
     rcv.stop();
-    snd.send(PUMP_CONTROLLER, InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperatureSetpoint, pumpNeedsOn, isPumpForced /* ignored by pump */), 2);
+    snd.send(PUMP_CONTROLLER, InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperatureSetpoint, pumpNeedsOn, isPumpForced /* ignored by pump */), 10);
     rcv.start();
   }
 }

@@ -23,7 +23,6 @@ class InterUnitCommunication
                                       bool pumpOn, bool pumpForced)
     {
       unsigned long code = (unitCode << 12) | ((temperature / 5) << 4) | (pumpOn ? 8UL : 0UL) | (pumpForced ? 4UL : 0UL);
-        Serial.println(code,HEX);
       return code | CalcChecksum(code);
     }
 
