@@ -19,9 +19,9 @@
 const int INVALID_TEMP = -1000;
 
 #ifdef DEBUG
-#define MINIMUM_COMMUNICATION_INTERVAL  20000
+#define MINIMUM_COMMUNICATION_INTERVAL   7000
 #define MASTER_VALIDITY                 30000
-#define MEASURE_INTERVAL                 4000
+#define MEASURE_INTERVAL                 7000
 #define FORCE_TIME_DURATION             30000
 #define MAX_OFF_PERIOD                 120000
 #else
@@ -46,6 +46,7 @@ int waterTemperatureSetpoint = 200;             // Temperature setpoint to turn 
 int waterTemperature = INVALID_TEMP;            // The last read valid temperature (invalidated after MASTER_VALIDITY ms)
 unsigned long waterTimestamp = 0;               // The timestamp the last water temperature measurement was done.
 unsigned long ForcedOnTimestamp = 0;            // The timestamp the pump is set on forced.
+unsigned long timestamp = 0;                    // Global timestamp to freeze the time during the loop.
 
 // Interrupt routine for RF433 communication.
 void code_received(int protocol, unsigned long code, unsigned long timestamp)
@@ -54,10 +55,17 @@ void code_received(int protocol, unsigned long code, unsigned long timestamp)
   {
     masterReceived = code;
     masterReceivedTimestamp = timestamp;
-    DEBUGONLY(LogTime());
-    DEBUGONLY(Serial.print(F("Received from master: ")));
-    DEBUGONLY(Serial.println(code, HEX));
+    //DEBUGONLY(LogTime());
+    //DEBUGONLY(Serial.print(F("Received from master: ")));
+    //DEBUGONLY(Serial.println(code, HEX));
   }
+  // Serial.print("Protocol: ");
+  // Serial.print(protocol);
+  // Serial.print(", code:");
+  // Serial.print(code, BIN);
+  // Serial.print(" / ");
+  // Serial.print(code, HEX);
+  // Serial.println();
 }
 
 // The objects / sensors we have
@@ -103,13 +111,13 @@ void TurnPumpOff()
 {
   isPumpOn = false;
   digitalWrite(PUMP_PIN, HIGH);
-  pumpOffTimestamp = millis();
+  pumpOffTimestamp = timestamp;
   updateMaster = true;
 }
 
 void loop()
 {
-  unsigned long timestamp = millis(); // Freeze the time.
+  timestamp = millis(); // Freeze the time.
 
   // Water temperature, measured locally
   if ( (timestamp - waterTimestamp) > MEASURE_INTERVAL)
@@ -149,10 +157,12 @@ void loop()
         if ( isPumpOn )
         {
           TurnPumpOff();
+          DEBUGONLY(Serial.println(F("Switched off by master")));
         }
         else
         {
           TurnPumpOn();
+          DEBUGONLY(Serial.println(F("Switched on by master")));
         }
       }
     }
@@ -193,6 +203,7 @@ void loop()
       if ( waterTemperature < waterTemperatureSetpoint )
       {
         TurnPumpOff();
+        DEBUGONLY(Serial.println(F("Switched off in fallback mode")));
       }
     }
     else
@@ -200,6 +211,7 @@ void loop()
       if ( waterTemperature >= (waterTemperatureSetpoint + 10) )
       {
         TurnPumpOn();
+        DEBUGONLY(Serial.println(F("Switched on in fallback mode")));
       }
     }
   }
@@ -216,7 +228,7 @@ void loop()
     DEBUGONLY(LogTime());
     DEBUGONLY(Serial.println(F("Send update to our master.")));
     rcv.stop();
-    snd.send(PUMP_CONTROLLER, InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperature, isPumpOn, isForcedOn), 10);
+    snd.send(PUMP_CONTROLLER, InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperature, isPumpOn, isForcedOn), 3);
     rcv.start();
     masterSendTimestamp = timestamp;
     updateMaster = false;    
@@ -227,14 +239,14 @@ void loop()
   if (cin == '1')
   {
     rcv.stop();
-    snd.send(ELRO, 0x144551, 10);
+    snd.send(ELRO, 0x145151, 10);
     rcv.start();
     Serial.println("Send on");
   }
   else if (cin == '0')
   {
     rcv.stop();
-    snd.send(ELRO, 0x144554, 10);
+    snd.send(ELRO, 0x145154, 10);
     rcv.start();
     Serial.println("Send off");
   }

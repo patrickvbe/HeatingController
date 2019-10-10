@@ -94,7 +94,7 @@ void receiver::start()
 
 void receiver::stop()
 {
-  detachInterrupt(pin);
+  detachInterrupt(digitalPinToInterrupt(pin));
 }
 
 void receiver::sread_interrupt()
@@ -180,12 +180,25 @@ void receiver::read_interrupt()
 {
   unsigned long timestamp = micros();
   unsigned long duration = timestamp - last_timestamp;
+  //            4294966700
+  // if ( last_timestamp > timestamp )
+  // {
+  //   Serial.print("* ");
+  //   Serial.print(last_timestamp);
+  //   Serial.print(" ");
+  //   Serial.print(timestamp);
+  //   Serial.print(" ");
+  //   Serial.println(duration);
+  // }
   last_timestamp = timestamp;
-  // Serial.println("i");
+  //Serial.println("i");
 
   // Pulses shorter than 250us are usually noise. But my smartwares remote drifts to almost 225us...
   if (duration > DURATIONTHRESHOLD1 || (duration > DURATIONTHRESHOLD2 && counter > 0))
   {
+    // Serial.print(duration);
+    // Serial.print(", ");
+    // Serial.println(counter);
     data[counter++] = duration;
     if (duration > SYNCPULSETHRESHOLD || counter == MAXRECORD)
     {

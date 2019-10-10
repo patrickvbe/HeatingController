@@ -11,20 +11,20 @@
 #endif
 
 #define SENDER_PIN   2
-#define RECEIVER_PIN 5
-#define DS18B20_PIN  4
+#define RECEIVER_PIN 4
+#define DS18B20_PIN  5
 #define UNIT_CODE 0xBAF
 
 const int INVALID_TEMP =       -1000;
 #ifdef DEBUG
 #define TEMP_VALIDITY                  300000
-#define MINIMUM_COMMUNICATION_INTERVAL  20000
+#define MINIMUM_COMMUNICATION_INTERVAL   5000
 #define PUMP_VALIDITY                   30000
-#define MEASURE_INTERVAL                10000
+#define MEASURE_INTERVAL                 5000
 #define FORCE_TIME_DURATION             30000
 #else
 #define TEMP_VALIDITY                  300000
-#define MINIMUM_COMMUNICATION_INTERVAL 240000
+#define MINIMUM_COMMUNICATION_INTERVAL  60000
 #define PUMP_VALIDITY                  300000
 #define MEASURE_INTERVAL                10000
 #define FORCE_TIME_DURATION            300000
@@ -54,8 +54,8 @@ int           outsidePreviousTemperature = INVALID_TEMP;    // Previous outside 
 unsigned long outsideTimestamp  = 0;                        // Timestamp of the last valid outside temperature received.
 unsigned long insideTimestamp = 0;                          // Timestamp the inside temperature was last measured.
 int           insideTemperature  = INVALID_TEMP;            // Last measured inside temperature.
-int           waterTemperatureSetpoint = 200;               // CV water temperature setpoint to turn the pump on / off. Might be configurable in the future.
-int           insideTemperatureSetpoint = 190;              // Room temperature setpoint to turn the pump on / off. Might be configurable in the future.
+int           waterTemperatureSetpoint = 220;               // CV water temperature setpoint to turn the pump on / off. Might be configurable in the future.
+int           insideTemperatureSetpoint = 215;              // Room temperature setpoint to turn the pump on / off. Might be configurable in the future.
 
 // Interrupt routine for RF433 communication.
 void code_received(int protocol, unsigned long code, unsigned long timestamp)
@@ -72,13 +72,13 @@ void code_received(int protocol, unsigned long code, unsigned long timestamp)
     pumpReceivedTimestamp = timestamp;
     pumpReceived = code;
   }
-   Serial.print("Protocol: ");
-   Serial.print(protocol);
-   Serial.print(", code:");
-   Serial.print(code, BIN);
-   Serial.print(" / ");
-   Serial.print(code, HEX);
-   Serial.println();
+  // Serial.print("Protocol: ");
+  // Serial.print(protocol);
+  // Serial.print(", code:");
+  // Serial.print(code, BIN);
+  // Serial.print(" / ");
+  // Serial.print(code, HEX);
+  // Serial.println();
 }
 
 // The objects / sensors we have
@@ -253,11 +253,11 @@ void loop()
   // If needed, communicate our status to the master.
   if ( sendToPump )
   {
+    rcv.stop();
+    snd.send(PUMP_CONTROLLER, InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperatureSetpoint, pumpNeedsOn, isPumpForced /* ignored by pump */), 3);
+    rcv.start();
     DEBUGONLY(LogTime());
     DEBUGONLY(Serial.println(F("Send update to pump.")));
-    rcv.stop();
-    snd.send(PUMP_CONTROLLER, InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperatureSetpoint, pumpNeedsOn, isPumpForced /* ignored by pump */), 10);
-    rcv.start();
     pumpSendTimestamp = timestamp;
     sendToPump = false;    
   }
@@ -318,14 +318,16 @@ void loop()
   if (cin == '1')
   {
     rcv.stop();
-    snd.send(ELRO, 0x144551);
+    snd.send(ELRO, 0x145151,10);
     rcv.start();
+    Serial.println("Send on");
   }
   else if (cin == '0')
   {
     rcv.stop();
-    snd.send(ELRO, 0x144554);
+    snd.send(ELRO, 0x145154,10);
     rcv.start();
+    Serial.println("Send off");
   }
   else if (cin == 'p')
   {
