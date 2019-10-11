@@ -16,11 +16,17 @@
 #define UNIT_CODE 0xBAF
 
 const int INVALID_TEMP =       -1000;
+
+// When we receive a signal from the master, the master is probably sending 1 to 10 signals.
+// Each signal takes app. 300ms. When we catch the first signal, the master might still be
+// busy for almost 3 seconds sending the repeats and thus not listening / using the frequency.
+#define RESPONSE_DELAY 3000
+
 #ifdef DEBUG
 #define TEMP_VALIDITY                  300000
-#define MINIMUM_COMMUNICATION_INTERVAL   5000
-#define PUMP_VALIDITY                   30000
-#define MEASURE_INTERVAL                 5000
+#define MINIMUM_COMMUNICATION_INTERVAL  12000
+#define PUMP_VALIDITY                   54000
+#define MEASURE_INTERVAL                10000
 #define FORCE_TIME_DURATION             30000
 #else
 #define TEMP_VALIDITY                  300000
@@ -49,13 +55,16 @@ bool          isPumpOn = false;                             // Pump status recei
 bool          isPumpForced = false;                         // Forced status received from the pump unit.
 bool          pumpNeedsOn = false;                          // Our computed / wanted pump status.
 bool          pumpCommunicationOK = false;                  // Did we receive valid and on-time communication from the pump unit?
+bool          sendToPump = false;                           // Do we need to update the pump controller?
 int           outsideTemperature = INVALID_TEMP;            // New temperature received from the weather station.
 int           outsidePreviousTemperature = INVALID_TEMP;    // Previous outside temperature (now displayed)
-unsigned long outsideTimestamp  = 0;                        // Timestamp of the last valid outside temperature received.
-unsigned long insideTimestamp = 0;                          // Timestamp the inside temperature was last measured.
 int           insideTemperature  = INVALID_TEMP;            // Last measured inside temperature.
 int           waterTemperatureSetpoint = 220;               // CV water temperature setpoint to turn the pump on / off. Might be configurable in the future.
 int           insideTemperatureSetpoint = 215;              // Room temperature setpoint to turn the pump on / off. Might be configurable in the future.
+unsigned long outsideTimestamp  = 0;                        // Timestamp of the last valid outside temperature received.
+unsigned long insideTimestamp = 0;                          // Timestamp the inside temperature was last measured.
+unsigned long start_response_delay = 0;                     // The start of the period we will not send a response.
+unsigned long timestamp;                                    // The globall frozen time.
 
 // Interrupt routine for RF433 communication.
 void code_received(int protocol, unsigned long code, unsigned long timestamp)
@@ -64,8 +73,8 @@ void code_received(int protocol, unsigned long code, unsigned long timestamp)
   {
     outsideTemperature = receiver::convertCodeToTemp(code);
     outsideTimestamp = timestamp;
-    Serial.print("Outside: ");
-    Serial.println(outsideTemperature);
+    DEBUGONLY(Serial.print("Outside: "));
+    DEBUGONLY(Serial.println(outsideTemperature));
   }
   if ( protocol == PUMP_CONTROLLER)
   {
@@ -98,6 +107,7 @@ void setup()
   display.flipScreenVertically();
 }
 
+#ifdef DEBUG
 void LogTime()
 {
   unsigned long totalseconds = millis()/1000;
@@ -109,6 +119,7 @@ void LogTime()
   Serial.print(seconds);
   Serial.print(' ');
 }
+#endif
 
 // Format a temperature in 10ths of degrees to a nice string.
 void ConcatTemp(int temp, String& str)
@@ -127,10 +138,9 @@ void ConcatTemp(int temp, String& str)
 
 void loop()
 {
-  unsigned long timestamp = millis();   // Freeze the time
+  timestamp = millis();                 // Freeze the time
   bool displayChanged = true;           // We only want to update the display if displayed values changed.
   bool controlValuesChanged = false;    // We only want to calculate the logic when input values changed (a bit over-the-top...)
-  bool sendToPump = false;              // Immediately communicate if values change / differ, otherwise in a timed interval.
 
   // outside temperature, received by RF433
   if ( outsideTemperature != INVALID_TEMP && timestamp - outsideTimestamp > TEMP_VALIDITY)
@@ -156,6 +166,7 @@ void loop()
   // Communication from pump controller
   if ( pumpReceivedTimestamp != LastPumpTimestamp )
   {
+    if ( start_response_delay == 0 ) start_response_delay = pumpReceivedTimestamp;
     LastPumpTimestamp = pumpReceivedTimestamp;
     InterUnitCommunication pumpcomm(pumpReceived);
     if ( pumpcomm.isValid && pumpcomm.unitCode == UNIT_CODE )
@@ -177,7 +188,7 @@ void loop()
       {
         displayChanged = true;
         isPumpOn = pumpcomm.pumpOn;
-        if (isPumpOn != pumpNeedsOn && !isPumpForced) sendToPump = true;
+        sendToPump = true;  // It's not what we expected, so we might have to update the pump controller.
       }
       DEBUGONLY(LogTime());
       DEBUGONLY(Serial.println("Received update from pump controller"));
@@ -250,8 +261,11 @@ void loop()
     sendToPump = true;
   }
 
+  // See if we already passed the response delay.
+  if ( start_response_delay != 0 && timestamp - start_response_delay > RESPONSE_DELAY ) start_response_delay = 0;
+
   // If needed, communicate our status to the master.
-  if ( sendToPump )
+  if ( sendToPump && start_response_delay == 0 )
   {
     rcv.stop();
     snd.send(PUMP_CONTROLLER, InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperatureSetpoint, pumpNeedsOn, isPumpForced /* ignored by pump */), 3);
@@ -259,7 +273,7 @@ void loop()
     DEBUGONLY(LogTime());
     DEBUGONLY(Serial.println(F("Send update to pump.")));
     pumpSendTimestamp = timestamp;
-    sendToPump = false;    
+    sendToPump = false;
   }
 
   // Update the display for the user.
