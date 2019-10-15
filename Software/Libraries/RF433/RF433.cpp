@@ -19,7 +19,7 @@ static const Protocol PROTOCOLS[] = {
     Protocol{130, 128, 0, 0, 300,  300,  300, 1200, 300, 10000},    // Smartwares (Action)
     Protocol{ 74,  70, 0, 0, 500,  950,  500, 1950, 550,  3850},    // Weatherstation
     Protocol{ 66,  64, 0, 0, 600, 1200, 1200,  600, 600,  7000},    // Conrad RSL
-    Protocol{ 50,  48, 0, 0, 400,  900, 1050,  250, 400, 10100},    // Elro
+    Protocol{ 50,  48, 0, 0, 350, 1000, 1000,  350, 350, 10100},    // Elro
     Protocol{ 50,  48, 0, 0, 500,  500,  500, 1000, 500, 10000}     // PUMP_CONTROLLER, my own :-)
 };
 
@@ -133,14 +133,14 @@ bool receiver::decodeprotocol(const int protocol_id)
     return false;
   }
   // pre-calculate ranges for speed...
-  unsigned long zerohl = (protocol.zero_high) / 2;
-  unsigned long zerohh = zerohl * 3;
-  unsigned long zeroll = (protocol.zero_low) / 2;
-  unsigned long zerolh = zeroll * 3;
-  unsigned long onehl = (protocol.one_high) / 2;
-  unsigned long onehh = onehl * 3;
-  unsigned long onell = (protocol.one_low) / 2;
-  unsigned long onelh = onell * 3;
+  unsigned long zerohl = (protocol.zero_high / 3) * 2;
+  unsigned long zerohh = zerohl * 2;
+  unsigned long zeroll = (protocol.zero_low / 3) * 2;
+  unsigned long zerolh = zeroll * 2;
+  unsigned long onehl = (protocol.one_high / 3) * 2;
+  unsigned long onehh = onehl * 2;
+  unsigned long onell = (protocol.one_low / 3) * 2;
+  unsigned long onelh = onell * 2;
   unsigned long code = 0;
   int end = start + protocol.relevantlength;
   for (int pos = start; pos < end; pos += 2)

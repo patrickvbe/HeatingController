@@ -10,9 +10,9 @@
   #define DEBUGONLY()
 #endif
 
-#define SENDER_PIN   2
-#define RECEIVER_PIN 4
-#define DS18B20_PIN  5
+#define SENDER_PIN    5
+#define RECEIVER_PIN  4
+#define DS18B20_PIN  15
 #define UNIT_CODE 0xBAF
 
 const int INVALID_TEMP =       -1000;
@@ -20,12 +20,12 @@ const int INVALID_TEMP =       -1000;
 // When we receive a signal from the master, the master is probably sending 1 to 10 signals.
 // Each signal takes app. 300ms. When we catch the first signal, the master might still be
 // busy for almost 3 seconds sending the repeats and thus not listening / using the frequency.
-#define RESPONSE_DELAY 3000
+#define RESPONSE_DELAY 6000
 
 #ifdef DEBUG
 #define TEMP_VALIDITY                  300000
-#define MINIMUM_COMMUNICATION_INTERVAL  12000
-#define PUMP_VALIDITY                   54000
+#define MINIMUM_COMMUNICATION_INTERVAL  25000
+#define PUMP_VALIDITY                   70000
 #define MEASURE_INTERVAL                10000
 #define FORCE_TIME_DURATION             30000
 #else
@@ -38,11 +38,13 @@ const int INVALID_TEMP =       -1000;
 
 // Temp Display
 #define DISPLAY_ADDRESS 0x3C
-#define SDA_PIN 14
-#define SCL_PIN 12
-#include <SSD1306Wire.h>
-#include "Open_Sans_Condensed_Bold_40.h"
-SSD1306Wire  display(DISPLAY_ADDRESS, SDA_PIN, SCL_PIN);
+#define SDA_PIN 12
+#define SCL_PIN 14
+#include <SH1106Wire.h>
+//#include <SSD1306Wire.h>
+#include "Open_Sans_Condensed_Bold_30.h"
+//SSD1306Wire  display(DISPLAY_ADDRESS, SDA_PIN, SCL_PIN);
+SH1106Wire  display(DISPLAY_ADDRESS, SDA_PIN, SCL_PIN);
 
 // The values we preserve
 unsigned long pumpReceived = 0;                             // Raw code received from the pump unit.
@@ -81,13 +83,13 @@ void code_received(int protocol, unsigned long code, unsigned long timestamp)
     pumpReceivedTimestamp = timestamp;
     pumpReceived = code;
   }
-  // Serial.print("Protocol: ");
-  // Serial.print(protocol);
-  // Serial.print(", code:");
-  // Serial.print(code, BIN);
-  // Serial.print(" / ");
-  // Serial.print(code, HEX);
-  // Serial.println();
+   Serial.print("Protocol: ");
+   Serial.print(protocol);
+   Serial.print(", code:");
+   Serial.print(code, BIN);
+   Serial.print(" / ");
+   Serial.print(code, HEX);
+   Serial.println();
 }
 
 // The objects / sensors we have
@@ -198,7 +200,6 @@ void loop()
       DEBUGONLY(LogTime());
       DEBUGONLY(Serial.println("Invalid pump message"));
     }
-
   }
 
   if ( pumpCommunicationOK && timestamp - LastValidPumpTimestamp > PUMP_VALIDITY )
@@ -218,6 +219,7 @@ void loop()
     insideTimestamp = timestamp;
     insidetemp.requestTemperatures();
     int temp = insidetemp.getTempCByIndex(0) * 10;
+    if ( temp < -100 ) temp = INVALID_TEMP;
     if ( temp != insideTemperature )
     {
       insideTemperature = temp;
@@ -268,7 +270,7 @@ void loop()
   if ( sendToPump && start_response_delay == 0 )
   {
     rcv.stop();
-    snd.send(PUMP_CONTROLLER, InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperatureSetpoint, pumpNeedsOn, isPumpForced /* ignored by pump */), 3);
+    snd.send(PUMP_CONTROLLER, InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperatureSetpoint, pumpNeedsOn, isPumpForced /* ignored by pump */), 6);
     rcv.start();
     DEBUGONLY(LogTime());
     DEBUGONLY(Serial.println(F("Send update to pump.")));
@@ -282,7 +284,8 @@ void loop()
     // Temp Display
     display.clear();
     display.setTextAlignment(TEXT_ALIGN_LEFT);
-    display.setFont(Open_Sans_Condensed_Bold_40);
+    //display.setFont(Open_Sans_Condensed_Bold_40);
+    display.setFont(Open_Sans_Condensed_Bold_30);
     //display.setFont(ArialMT_Plain_24);
     String str;
     ConcatTemp(insideTemperature, str);

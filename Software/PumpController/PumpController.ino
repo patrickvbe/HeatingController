@@ -21,12 +21,12 @@ const int INVALID_TEMP = -1000;
 // When we receive a signal from the master, the master is probably sending 1 to 10 signals.
 // Each signal takes app. 300ms. When we catch the first signal, the master might still be
 // busy for almost 3 seconds sending the repeats and thus not listening / using the frequency.
-#define RESPONSE_DELAY 3000
+#define RESPONSE_DELAY 6000
 
 #ifdef DEBUG
-#define MINIMUM_COMMUNICATION_INTERVAL  10000
-#define MASTER_VALIDITY                 45000
-#define MEASURE_INTERVAL                 7000
+#define MINIMUM_COMMUNICATION_INTERVAL  15000
+#define MASTER_VALIDITY                110000
+#define MEASURE_INTERVAL                15000
 #define FORCE_TIME_DURATION             30000
 #define MAX_OFF_PERIOD                 120000
 #else
@@ -239,7 +239,7 @@ void loop()
     DEBUGONLY(LogTime());
     DEBUGONLY(Serial.println(F("Send update to our master.")));
     rcv.stop();
-    snd.send(PUMP_CONTROLLER, InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperature, isPumpOn, isForcedOn), 3);
+    snd.send(PUMP_CONTROLLER, InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperature, isPumpOn, isForcedOn), 6);
     rcv.start();
     masterSendTimestamp = timestamp;
     updateMaster = false;    
