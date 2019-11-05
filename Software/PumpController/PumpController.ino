@@ -3,7 +3,7 @@
 #include "src/RF433/RF433.h"
 #include "src/InterUnitCommunication/InterUnitCommunication.h"
 
-#define DEBUG ;
+//#define DEBUG
 #ifdef DEBUG
 #define DEBUGONLY(statement) statement;
 #else
@@ -15,6 +15,7 @@
 #define RECEIVER_PIN 2
 #define DS18B20_PIN 9
 #define UNIT_CODE 0xBAF
+#define LED_BUILDIN 13
 
 const int INVALID_TEMP = -1000;
 
@@ -24,17 +25,17 @@ const int INVALID_TEMP = -1000;
 #define RESPONSE_DELAY 6000
 
 #ifdef DEBUG
-#define MINIMUM_COMMUNICATION_INTERVAL  15000
-#define MASTER_VALIDITY                110000
-#define MEASURE_INTERVAL                15000
-#define FORCE_TIME_DURATION             30000
-#define MAX_OFF_PERIOD                 120000
+#define MINIMUM_COMMUNICATION_INTERVAL  15000UL
+#define MASTER_VALIDITY                110000UL
+#define MEASURE_INTERVAL                15000UL
+#define FORCE_TIME_DURATION             30000UL
+#define MAX_OFF_PERIOD                 120000UL
 #else
-#define MINIMUM_COMMUNICATION_INTERVAL 240000
-#define MASTER_VALIDITY                300000
-#define MEASURE_INTERVAL                10000
-#define FORCE_TIME_DURATION            300000
-#define MAX_OFF_PERIOD          1000*60*60*24
+#define MINIMUM_COMMUNICATION_INTERVAL  90000UL
+#define MASTER_VALIDITY                300000UL
+#define MEASURE_INTERVAL                10000UL
+#define FORCE_TIME_DURATION            300000UL
+#define MAX_OFF_PERIOD          1000UL*60*60*24
 #endif
 
 // The values we preserve
@@ -85,6 +86,8 @@ void setup()
 {
   pinMode(PUMP_PIN, OUTPUT);
   digitalWrite(PUMP_PIN, HIGH); // Turn the pump off initially (the relais is inverse controlled).
+  pinMode(LED_BUILDIN, OUTPUT);
+  digitalWrite(LED_BUILDIN, LOW); // Indicates fall-back mode.
   // Set some timestamps to the current millis to prevent fallback / forced mode immediately.
   timestamp = millis();
   pumpOffTimestamp = timestamp;
@@ -159,6 +162,7 @@ void loop()
       DEBUGONLY(Serial.print(" "));
       DEBUGONLY(Serial.println(received.pumpOn));
       inFallbackMode = false;
+      digitalWrite(LED_BUILDIN, LOW);
       lastValidMasterReceivedTimestamp = masterReceivedTimestamp;
       // temperature: the setpoint for the pump to start
       // pumpOn:      the requested pump status
@@ -201,6 +205,7 @@ void loop()
     DEBUGONLY(LogTime());
     DEBUGONLY(Serial.println(F("Switched to fallback mode")));
     inFallbackMode = true;
+    digitalWrite(LED_BUILDIN, HIGH);
   }
 
   // Run in fallback mode.
@@ -237,14 +242,16 @@ void loop()
   if ( updateMaster && start_response_delay == 0 )
   {
     DEBUGONLY(LogTime());
-    DEBUGONLY(Serial.println(F("Send update to our master.")));
+    DEBUGONLY(Serial.print(F("Send update to our master: ")));
+    DEBUGONLY(Serial.println(InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperature, isPumpOn, isForcedOn), HEX));
     rcv.stop();
-    snd.send(PUMP_CONTROLLER, InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperature, isPumpOn, isForcedOn), 6);
+    snd.send(PUMP_CONTROLLER, InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperature > 0 ? waterTemperature : 0, isPumpOn, isForcedOn), 6);
     rcv.start();
     masterSendTimestamp = timestamp;
     updateMaster = false;    
   }
 
+#ifdef DEBUG
   // Test code
   int cin = Serial.read();
   if (cin == '1')
@@ -266,6 +273,8 @@ void loop()
     rcv.stop();
     snd.send(PUMP_CONTROLLER, InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperature, isPumpOn, isForcedOn), 10);
     rcv.start();
-    Serial.println(F("Send master"));
+    Serial.print(F("Send master: "));
+    DEBUGONLY(Serial.println(InterUnitCommunication::CalculateCode(UNIT_CODE, waterTemperature, isPumpOn, isForcedOn), HEX));
   }
+#endif
 }
