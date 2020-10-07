@@ -3,45 +3,102 @@
 class InterUnitCommunication
 {
   public:
-    InterUnitCommunication(unsigned long received_code)
+    InterUnitCommunication()
+      : m_stage(0)
     {
-      Code(received_code);
     }
 
-    void Code(unsigned long received_code)
-    {
-      code         = received_code;
-      unitCode     = (code >> 12) & 0xFFF;      // 12 bit unit code
-      temperature  = ((code >>  4) & 0xFF) * 5; //  8 bit temperature in half degrees
-      pumpOn       = (code & 8) != 0;           //  1 bit pump status
-      pumpForcedOn = (code & 4) != 0;           //  1 bit pump-is-forced
-      isValid      = (code & 3) == CalcChecksum(code); // 2-bit 'checksum'
-    }
-
-    static unsigned long CalculateCode(const unsigned long unitCode,
-                                      const unsigned long temperature /* in tenths of C */,
-                                      bool pumpOn, bool pumpForced)
-    {
-      unsigned long code = (unitCode << 12) | ((temperature / 5) << 4) | (pumpOn ? 8UL : 0UL) | (pumpForced ? 4UL : 0UL);
-      return code | CalcChecksum(code);
-    }
-
-    static unsigned long CalcChecksum(unsigned long code)
-    {
-      unsigned long value = code;
-      unsigned long poorcrc = 0;
-      for ( int i = 11; i > 0; i--)
-      {
-        value >>= 2;
-        poorcrc ^= value;
+    //CRC-8 - based on the CRC8 formulas by Dallas/Maxim
+    //code released under the therms of the GNU GPL 3.0 license
+    static void AddCRC8(byte& crc, const byte* data, byte len) {
+      while (len--) {
+        byte extract = *data++;
+        for (byte tempI = 8; tempI; tempI--) {
+          byte sum = (crc ^ extract) & 0x01;
+          crc >>= 1;
+          if (sum) {
+            crc ^= 0x8C;
+          }
+          extract >>= 1;
+        }
       }
-      return poorcrc & 3UL;
     }
 
-    unsigned long code;   // The code received
-    int   unitCode;       // Unique code to identify the unit
-    int   temperature;    // The temperature in tenths of Celcius (transmitted as half degrees possitive only)
-    bool  pumpOn;         // Is / should the pump (be) on.
-    bool  pumpForcedOn;   // Is the pump forcibly on (because it hasn't run for x hours). Only from pump to controller.
-    bool  isValid;        // Was the received signal valid?
+    static byte CalcCRC(int temperature, bool pumpon, bool pumpforced)
+    {
+      byte crc = 0;
+      AddCRC8(crc, (byte*)&temperature, sizeof(temperature));
+      AddCRC8(crc, (byte*)&pumpon, sizeof(pumpon));
+      AddCRC8(crc, (byte*)&pumpforced, sizeof(pumpforced));
+      return crc;
+    }
+
+    static void Send(int temperature, bool pumpon, bool pumpforced)
+    {
+      Serial.print(F("@"));       // stage 0
+      Serial.print(temperature);  // stage 1
+      Serial.print(',');
+      Serial.print(pumpon);       // stage 2
+      Serial.print(',');
+      Serial.print(pumpforced);   // stage 3
+      Serial.print(',');
+      Serial.print(CalcCRC(temperature, pumpon, pumpforced)); // stage 4
+      Serial.print('\n');
+    }
+
+    bool Read()
+    {
+      while (Serial.available() > 0)
+      {
+        byte rec = Serial.read();
+        if ( rec == '@')  // Not only at stage == 0, but always trigger on a new package.
+        {
+          m_stage = 1;
+          m_temperature = 0;
+          m_pumpOn = false;
+          m_pumpForcedOn = false;
+          continue;
+        }
+        if ( m_stage > 0 && rec == ',')
+        {
+          ++m_stage;
+          continue;
+        }
+        switch(m_stage)
+        {
+          case 1:
+            m_temperature *= 10;
+            m_temperature += rec - '0';
+            break;
+          case 2:
+            m_pumpOn = rec == '1';
+            break;
+          case 3:
+            m_pumpForcedOn = rec == '1';
+            break;
+          case 4:
+            if ( rec == '\n')
+            {
+              m_stage = 0;
+              if ( CalcCRC(m_temperature, m_pumpOn, m_pumpForcedOn) == m_crc ) return true;
+            }
+            else
+            {
+              m_crc *= 10;
+              m_crc += rec - '0';
+            }
+            break;
+          default:
+            m_stage = 0;
+            break;
+        }
+      }
+      return false;
+    }
+
+    int   m_temperature;    // The temperature in tenths of Celcius (transmitted as half degrees possitive only)
+    bool  m_pumpOn;         // Is / should the pump (be) on.
+    bool  m_pumpForcedOn;   // Is the pump forcibly on (because it hasn't run for x hours). Only from pump to controller.
+    byte  m_crc;
+    byte  m_stage;
 };
