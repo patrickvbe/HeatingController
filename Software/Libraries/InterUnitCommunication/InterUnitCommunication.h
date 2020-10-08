@@ -8,8 +8,8 @@ class InterUnitCommunication
     {
     }
 
-    //CRC-8 - based on the CRC8 formulas by Dallas/Maxim
-    //code released under the therms of the GNU GPL 3.0 license
+    //CRC-8 - based on the CRC8 formula by Dallas/Maxim
+    //code released under the terms of the GNU GPL 3.0 license
     static void AddCRC8(byte& crc, const byte* data, byte len) {
       while (len--) {
         byte extract = *data++;

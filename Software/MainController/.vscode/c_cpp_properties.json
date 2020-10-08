@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "/home/patrick/arduino-1.8.13/tools/**",
+                "/home/patrick/arduino-1.8.13/hardware/arduino/avr/**",
+                "/home/patrick/Arduino/libraries/**",
+                "/home/patrick/arduino-1.8.13/hardware/tools/avr/avr/include/",
+                "/home/patrick/arduino-1.8.13/hardware/tools/avr/lib/gcc/avr/7.3.0/include/",
+                "${workspaceFolder}/**"
+            ],
+            "defines": [
+                "ARDUINO=100"
+            ],
+            "forcedInclude": [],
+            "intelliSenseMode": "gcc-x64",
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "gnu11",
+            "cppStandard": "c++17"
+        }
+    ],
+    "version": 4
+}
