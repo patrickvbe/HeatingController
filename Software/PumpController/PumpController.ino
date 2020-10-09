@@ -56,12 +56,18 @@ void setup()
   digitalWrite(PUMP_PIN, HIGH); // Turn the pump off initially (the relais is inverse controlled).
   pinMode(LED_BUILDIN, OUTPUT);
   digitalWrite(LED_BUILDIN, LOW); // Indicates fall-back mode.
+  Serial.begin(115200);
+  Serial.setTimeout(100);
   // Set some timestamps to the current millis to prevent fallback / forced mode immediately.
   timestamp = millis();
   pumpOffTimestamp = timestamp;
-  DEBUGONLY(Serial.begin(230400));
   watertemp.begin();
   watertemp.setResolution(10);
+  // Used to enter back for debugging.
+  // <200,1,0,225>
+  // <200,0,0,37>
+   DEBUGONLY(communicator.Send(200, true, false));
+   DEBUGONLY(communicator.Send(200, false, false));
 }
 
 #ifdef DEBUG
@@ -198,7 +204,7 @@ void loop()
   if ( updateMaster )
   {
     DEBUGONLY(LogTime());
-    DEBUGONLY(Serial.print(F("Send update to our master: ")));
+    DEBUGONLY(Serial.println(F("Send update to our master.")));
     communicator.Send(waterTemperature > 0 ? waterTemperature : 0, isPumpOn, isForcedOn);
     masterSendTimestamp = timestamp;
     updateMaster = false;    
