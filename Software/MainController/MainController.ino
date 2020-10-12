@@ -10,16 +10,14 @@
   #define DEBUGONLY()
 #endif
 
+// IO5 = D1
+// IO4 = D2
+// IO15 = D8
 #define SENDER_PIN    5
 #define RECEIVER_PIN  4
 #define DS18B20_PIN  15
 
 const int INVALID_TEMP =       -1000;
-
-// When we receive a signal from the master, the master is probably sending 1 to 10 signals.
-// Each signal takes app. 300ms. When we catch the first signal, the master might still be
-// busy for almost 3 seconds sending the repeats and thus not listening / using the frequency.
-#define RESPONSE_DELAY 6000
 
 #ifdef DEBUG
 #define TEMP_VALIDITY                  300000
@@ -36,6 +34,8 @@ const int INVALID_TEMP =       -1000;
 #endif
 
 // Temp Display
+// IO12 = D6
+// IO14 = D5
 #define DISPLAY_ADDRESS 0x3C
 #define SDA_PIN 12
 #define SCL_PIN 14
@@ -85,6 +85,8 @@ void code_received(int protocol, unsigned long code, unsigned long timestamp)
 // The objects / sensors we have
 receiver                rcv(RECEIVER_PIN, code_received);
 sender                  snd(SENDER_PIN);
+// RXD0 = IO3 = TX
+// TXD0 = IO1 = RX
 InterUnitCommunication  communicator;  // For now, uses the default serial port.
 OneWire                 onewire(DS18B20_PIN);
 DallasTemperature       insidetemp(&onewire);
