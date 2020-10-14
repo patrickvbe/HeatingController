@@ -97,7 +97,7 @@ void receiver::stop()
   detachInterrupt(digitalPinToInterrupt(pin));
 }
 
-void receiver::sread_interrupt()
+ICACHE_RAM_ATTR void receiver::sread_interrupt()
 {
   receiver::me->read_interrupt();
 }

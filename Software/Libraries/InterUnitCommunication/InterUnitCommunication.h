@@ -26,7 +26,7 @@ class InterUnitCommunication
       }
     }
 
-    static byte CalcCRC(int temperature, bool pump_on, bool pump_forced)
+    static byte CalcCRC(word temperature, bool pump_on, bool pump_forced)
     {
       byte crc = 0;
       AddCRC8(crc, (byte*)&temperature, sizeof(temperature));
@@ -35,9 +35,9 @@ class InterUnitCommunication
       return crc;
     }
 
-    static void Send(int temperature, bool pump_on, bool pump_forced)
+    static void Send(word temperature, bool pump_on, bool pump_forced)
     {
-      Serial.print(F("<"));       // stage 0
+      Serial.print('<');       // stage 0
       Serial.print(temperature);  // stage 1
       Serial.print(',');
       Serial.print(pump_on);       // stage 2
@@ -45,7 +45,7 @@ class InterUnitCommunication
       Serial.print(pump_forced);   // stage 3
       Serial.print(',');
       Serial.print(CalcCRC(temperature, pump_on, pump_forced)); // stage 4
-      Serial.print(">\n");
+      Serial.println('>');
     }
 
     bool Read()
@@ -54,8 +54,8 @@ class InterUnitCommunication
       if (Serial.available() > 0)
       {
         byte buffer[16];
-        int count = Serial.readBytesUntil('\n', buffer, 16);
-        for ( int pos=0; pos < count; pos++)
+        word count = Serial.readBytesUntil('\n', buffer, 16);
+        for ( word pos=0; pos < count; pos++)
         {
           byte rec = buffer[pos];
           if ( rec == '<')  // Not only at stage == 0, but always trigger on a new package.
@@ -92,7 +92,7 @@ class InterUnitCommunication
       return false;
     }
 
-    int   m_temperature;    // The temperature in tenths of Celsius (transmitted as half degrees positive only)
+    word  m_temperature;    // The temperature in tenths of Celsius (transmitted as half degrees positive only)
     bool  m_pumpOn;         // Is / should the pump (be) on.
     bool  m_pumpForcedOn;   // Is the pump forcibly on (because it has not run for x hours). Only from pump to controller.
     byte  m_crc;

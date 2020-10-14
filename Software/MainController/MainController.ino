@@ -12,28 +12,30 @@
 
 // IO5 = D1
 // IO4 = D2
-// IO15 = D8
+// IO13 = D7
+// IO0 = D3, has pull-up resistor
+// IO2 = D4, has pull-up resistor
 #define SENDER_PIN    5
 #define RECEIVER_PIN  4
-#define DS18B20_PIN  15
+#define DS18B20_PIN  13
 
 const int INVALID_TEMP =       -1000;
 
 #ifdef DEBUG
-#define TEMP_VALIDITY                  300000
+#define TEMP_VALIDITY                  900000
 #define MINIMUM_COMMUNICATION_INTERVAL  25000
 #define PUMP_VALIDITY                   70000
 #define MEASURE_INTERVAL                10000
 #define FORCE_TIME_DURATION             30000
 #else
-#define TEMP_VALIDITY                  300000
+#define TEMP_VALIDITY                  900000
 #define MINIMUM_COMMUNICATION_INTERVAL  60000
 #define PUMP_VALIDITY                  300000
 #define MEASURE_INTERVAL                10000
 #define FORCE_TIME_DURATION            300000
 #endif
 
-// Temp Display
+// Display
 // IO12 = D6
 // IO14 = D5
 #define DISPLAY_ADDRESS 0x3C
@@ -109,8 +111,8 @@ void LogTime()
   unsigned long seconds = totalseconds % 60;
   unsigned long minutes = totalseconds / 60;
   Serial.print(minutes);
-  Serial.print(F(":"));
-  if ( seconds < 10 ) Serial.print("0");
+  Serial.print(':');
+  if ( seconds < 10 ) Serial.print('0');
   Serial.print(seconds);
   Serial.print(' ');
 }
@@ -195,7 +197,7 @@ void loop()
     waterTemperature = INVALID_TEMP;
   }
 
-  // Inside temperature, measured locally
+   // Inside temperature, measured locally
   if ( timestamp - insideTimestamp > MEASURE_INTERVAL )
   {
     insideTimestamp = timestamp;
@@ -213,7 +215,7 @@ void loop()
     }
   }
 
-  // The actual controlling actions.
+ // The actual controlling actions.
   if ( controlValuesChanged )
   {
     if ( waterTemperature != INVALID_TEMP && insideTemperature != INVALID_TEMP )

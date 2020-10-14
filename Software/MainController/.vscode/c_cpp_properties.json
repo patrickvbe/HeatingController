@@ -8,7 +8,9 @@
                 "/home/patrick/Arduino/libraries/**",
                 "/home/patrick/arduino-1.8.13/hardware/tools/avr/avr/include/",
                 "/home/patrick/arduino-1.8.13/hardware/tools/avr/lib/gcc/avr/7.3.0/include/",
-                "${workspaceFolder}/**"
+                "${workspaceFolder}/**",
+                "/home/patrick/.arduino15/packages/esp8266/hardware/esp8266/2.7.4/**",
+                "/home/patrick/.arduino15/packages/esp8266/tools/**"
             ],
             "defines": [
                 "ARDUINO=100"
