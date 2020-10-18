@@ -31,6 +31,8 @@ bool doingota = false;
 #define SENDER_PIN    5
 #define RECEIVER_PIN  4
 #define DS18B20_PIN  13
+#define BUTTON1_PIN 0
+#define BUTTON2_PIN 2
 
 const int INVALID_TEMP =       -1000;
 
@@ -74,9 +76,16 @@ int           outsidePreviousTemperature = INVALID_TEMP;    // Previous outside 
 int           insideTemperature  = INVALID_TEMP;            // Last measured inside temperature.
 int           waterTemperatureSetpoint = 220;               // CV water temperature setpoint to turn the pump on / off. Might be configurable in the future.
 int           insideTemperatureSetpoint = 215;              // Room temperature setpoint to turn the pump on / off. Might be configurable in the future.
+int           displaymode = 0;                              // What to show on the screen
 unsigned long outsideTimestamp  = 0;                        // Timestamp of the last valid outside temperature received.
 unsigned long insideTimestamp = 0;                          // Timestamp the inside temperature was last measured.
 unsigned long timestamp;                                    // The globall frozen time.
+unsigned long lastforcedon=0;
+unsigned long displayupdated=0;
+bool          Button1Down = false;
+bool          Button2Down = false;
+
+static char* SColon = ": ";
 
 // Interrupt routine for RF433 communication.
 void code_received(int protocol, unsigned long code, unsigned long timestamp)
@@ -110,6 +119,15 @@ void setup()
 {
   Serial.begin(115200);
 
+  // Display
+  display.init();
+  display.flipScreenVertically();
+  display.clear();
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.setFont(Open_Sans_Condensed_Bold_30);
+  display.drawString(0, 0, "Booting");
+  display.display();
+
   // OTA, bit rude currently, needs to boot without WiFi.
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
@@ -122,6 +140,11 @@ void setup()
   ArduinoOTA.onStart([]() {
     doingota = true;
     rcv.stop();
+    display.clear();
+    display.setTextAlignment(TEXT_ALIGN_LEFT);
+    display.setFont(Open_Sans_Condensed_Bold_30);
+    display.drawString(0, 0, "OTA");
+    display.display();
     String type;
     if (ArduinoOTA.getCommand() == U_FLASH) {
       type = "sketch";
@@ -160,12 +183,13 @@ void setup()
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
+  // Buttons
+  pinMode(BUTTON1_PIN, INPUT);
+  pinMode(BUTTON2_PIN, INPUT);
+
   rcv.start();
   insidetemp.begin();
   insidetemp.setResolution(12);
-  // Display
-  display.init();
-  display.flipScreenVertically();
 }
 
 #ifdef DEBUG
@@ -181,6 +205,21 @@ void LogTime()
   Serial.print(' ');
 }
 #endif
+
+class PrintString : public Print, public String
+{
+public:
+  PrintString() : Print(), String() {}
+  PrintString(const char* s) : Print(), String(s) {}
+  virtual size_t write(uint8_t c) { concat((char)c); }
+  virtual size_t write(const uint8_t *buffer, size_t size)
+  {
+    reserve(length() + size + 1);
+    while(size--) concat((char)*buffer++);
+  }
+  virtual int availableForWrite() { return 100; } // Whatever??
+
+};
 
 // Format a temperature in 10ths of degrees to a nice string.
 void ConcatTemp(int temp, String& str)
@@ -204,7 +243,7 @@ void loop()
   if ( doingota ) return;
 
   timestamp = millis();                 // Freeze the time
-  bool displayChanged = true;           // We only want to update the display if displayed values changed.
+  bool displayChanged = false;          // We only want to update the display if displayed values changed.
   bool controlValuesChanged = false;    // We only want to calculate the logic when input values changed (a bit over-the-top...)
 
   // outside temperature, received by RF433
@@ -243,6 +282,10 @@ void loop()
     {
       isPumpForced = communicator.m_pumpForcedOn;
       displayChanged = true;
+      if ( isPumpForced )
+      {
+        lastforcedon = timestamp;
+      }
     }
     if ( isPumpOn != communicator.m_pumpOn )
     {
@@ -325,54 +368,117 @@ void loop()
     sendToPump = false;
   }
 
+  // Button control
+  if ( (digitalRead(BUTTON1_PIN) == LOW) != Button1Down )
+  {
+    if ( (Button1Down = !Button1Down) )
+    {
+      if ( ++displaymode > 2 ) displaymode = 0;
+      displayChanged = true;
+    }
+  }
+  if ( displaymode == 1 && (timestamp - displayupdated) > 1000 ) displayChanged = true;
+
   // Update the display for the user.
   if ( displayChanged )
   {
-    // Temp Display
-    display.clear();
-    display.setTextAlignment(TEXT_ALIGN_LEFT);
-    //display.setFont(Open_Sans_Condensed_Bold_40);
-    display.setFont(Open_Sans_Condensed_Bold_30);
-    //display.setFont(ArialMT_Plain_24);
+    const word colonposition = 65;
+    const word lineheight = 15;
+    word line = 0;
     String str;
-    ConcatTemp(insideTemperature, str);
-    display.drawString(0, 0, str);
-    display.setTextAlignment(TEXT_ALIGN_RIGHT);
-    str = "";
-    ConcatTemp(outsideTemperature, str);
-    display.drawString(128, 0, str);
-    display.setTextAlignment(TEXT_ALIGN_LEFT);
-    display.setFont(ArialMT_Plain_16);
-    if ( waterTemperature != INVALID_TEMP )
+    displayupdated = timestamp;
+    display.clear();
+    if ( displaymode == 0 )
     {
-      str = "CV: ";
-      str.concat(waterTemperature / 10);
-    }
-    else
-    {
-      str = "CV: --";
-    }
-    display.drawString(0, 46, str);
-    display.setTextAlignment(TEXT_ALIGN_RIGHT);
-    if ( pumpCommunicationOK )
-    {
-      str = "P ";
-      if ( isPumpForced )
+      display.setTextAlignment(TEXT_ALIGN_LEFT);
+      //display.setFont(Open_Sans_Condensed_Bold_40);
+      display.setFont(Open_Sans_Condensed_Bold_30);
+      //display.setFont(ArialMT_Plain_24);
+      ConcatTemp(insideTemperature, str);
+      display.drawString(0, 0, str);
+      display.setTextAlignment(TEXT_ALIGN_RIGHT);
+      str = "";
+      ConcatTemp(outsideTemperature, str);
+      display.drawString(128, 0, str);
+      display.setTextAlignment(TEXT_ALIGN_LEFT);
+      display.setFont(ArialMT_Plain_16);
+      if ( waterTemperature != INVALID_TEMP )
       {
-        str.concat("AAN");
+        str = "CV: ";
+        str.concat(waterTemperature / 10);
       }
       else
       {
-        str.concat(isPumpOn ? "aan" : "uit");
-        if ( pumpNeedsOn != isPumpOn ) str.concat("!");
+        str = "CV: --";
       }
+      display.drawString(0, 46, str);
+      display.setTextAlignment(TEXT_ALIGN_RIGHT);
+      if ( pumpCommunicationOK )
+      {
+        str = "P ";
+        if ( isPumpForced )
+        {
+          str.concat("AAN");
+        }
+        else
+        {
+          str.concat(isPumpOn ? "aan" : "uit");
+          if ( pumpNeedsOn != isPumpOn ) str.concat("!");
+        }
+      }
+      else
+      {
+        str = "p-fout";
+      }
+      display.drawString(128, 46, str);
     }
-    else
+    else if ( displaymode == 1 )
     {
-      str = "p-fout";
+      display.setTextAlignment(TEXT_ALIGN_LEFT);
+      display.setFont(ArialMT_Plain_16);
+      
+      display.drawString(0, line, "buiten");
+      str = SColon;
+      str.concat( (timestamp - outsideTimestamp) / 1000 );
+      display.drawString(colonposition, line, str);
+      
+      display.drawString(0, line += lineheight, "binnen");
+      str = SColon;
+      str.concat( (timestamp - insideTimestamp) / 1000 );
+      display.drawString(colonposition, line, str);
+      
+      display.drawString(0, line += lineheight, "p-comm");
+      str = SColon;
+      str.concat( (timestamp - LastValidPumpTimestamp) / 1000 );
+      display.drawString(colonposition, line, str);
+      
+      display.drawString(0, line += lineheight, "periodiek");
+      str = SColon;
+      if ( (timestamp - lastforcedon) > (24 * 3600 * 1000) ) str.concat("> dag");
+      else str.concat( (timestamp - lastforcedon) / 1000 );
+      display.drawString(colonposition, line, str);
     }
-    display.drawString(128, 46, str);
-    
+    else if ( displaymode == 2 )
+    {
+      display.drawString(0, line, "water");
+      str = SColon;
+      ConcatTemp(waterTemperature, str);
+      display.drawString(colonposition, line, str);
+
+      display.drawString(0, line += lineheight, "pomp");
+      str = SColon;
+      str.concat(!isPumpOn ? "uit" : isPumpForced ? "(p)" : "aan");
+      display.drawString(colonposition, line, str);
+
+      display.drawString(0, line += lineheight, "comm.");
+      str = SColon;
+      str.concat(pumpCommunicationOK ? "OK" : "Fout");
+      display.drawString(colonposition, line, str);
+
+      PrintString pstr;
+      pstr.print(WiFi.localIP());
+      display.drawString(0, line += lineheight, pstr);
+    }
     display.display();
     displayChanged = false;
   }
