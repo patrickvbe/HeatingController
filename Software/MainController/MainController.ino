@@ -16,11 +16,11 @@ bool doingota = false;
 #include "src/RF433/RF433.h"
 #include "src/InterUnitCommunication/InterUnitCommunication.h"
 
-#define DEBUG;
+//#define DEBUG;
 #ifdef DEBUG
   #define DEBUGONLY(statement) statement;
 #else
-  #define DEBUGONLY()
+  #define DEBUGONLY(statement)
 #endif
 
 // IO5 = D1
@@ -31,6 +31,7 @@ bool doingota = false;
 #define SENDER_PIN    5
 #define RECEIVER_PIN  4
 #define DS18B20_PIN  13
+#define DS18B20_DELAY 1000
 #define BUTTON1_PIN 0
 #define BUTTON2_PIN 2
 
@@ -46,7 +47,7 @@ const int INVALID_TEMP =       -1000;
 #define TEMP_VALIDITY                  900000
 #define MINIMUM_COMMUNICATION_INTERVAL  60000
 #define PUMP_VALIDITY                  300000
-#define MEASURE_INTERVAL                10000
+#define MEASURE_INTERVAL                15000
 #define FORCE_TIME_DURATION            300000
 #endif
 
@@ -75,13 +76,14 @@ int           outsideTemperature = INVALID_TEMP;            // New temperature r
 int           outsidePreviousTemperature = INVALID_TEMP;    // Previous outside temperature (now displayed)
 int           insideTemperature  = INVALID_TEMP;            // Last measured inside temperature.
 int           waterTemperatureSetpoint = 220;               // CV water temperature setpoint to turn the pump on / off. Might be configurable in the future.
-int           insideTemperatureSetpoint = 215;              // Room temperature setpoint to turn the pump on / off. Might be configurable in the future.
+int           insideTemperatureSetpoint = 200;              // Room temperature setpoint to turn the pump on / off. Might be configurable in the future.
 int           displaymode = 0;                              // What to show on the screen
 unsigned long outsideTimestamp  = 0;                        // Timestamp of the last valid outside temperature received.
 unsigned long insideTimestamp = 0;                          // Timestamp the inside temperature was last measured.
 unsigned long timestamp;                                    // The globall frozen time.
 unsigned long lastforcedon=0;
 unsigned long displayupdated=0;
+bool          insideRequested = false;
 bool          Button1Down = false;
 bool          Button2Down = false;
 
@@ -115,6 +117,15 @@ InterUnitCommunication  communicator;  // For now, uses the default serial port.
 OneWire                 onewire(DS18B20_PIN);
 DallasTemperature       insidetemp(&onewire);
 
+void ShowFullScreenStatus(char* status)
+{
+  display.clear();
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.setFont(Open_Sans_Condensed_Bold_30);
+  display.drawString(0, 0, status);
+  display.display();
+}
+
 void setup()
 {
   Serial.begin(115200);
@@ -122,17 +133,13 @@ void setup()
   // Display
   display.init();
   display.flipScreenVertically();
-  display.clear();
-  display.setTextAlignment(TEXT_ALIGN_LEFT);
-  display.setFont(Open_Sans_Condensed_Bold_30);
-  display.drawString(0, 0, "Booting");
-  display.display();
+  ShowFullScreenStatus("Booting");
 
   // OTA, bit rude currently, needs to boot without WiFi.
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    Serial.println("Connection Failed! Rebooting...");
+    ShowFullScreenStatus("No WiFi");
     delay(5000);
     ESP.restart();
   }
@@ -140,48 +147,25 @@ void setup()
   ArduinoOTA.onStart([]() {
     doingota = true;
     rcv.stop();
-    display.clear();
-    display.setTextAlignment(TEXT_ALIGN_LEFT);
-    display.setFont(Open_Sans_Condensed_Bold_30);
-    display.drawString(0, 0, "OTA");
-    display.display();
+    ShowFullScreenStatus("OTA");
     String type;
     if (ArduinoOTA.getCommand() == U_FLASH) {
       type = "sketch";
     } else { // U_FS
       type = "filesystem";
     }
-
-    // NOTE: if updating FS this would be the place to unmount FS using FS.end()
-    Serial.println("Start updating " + type);
   });
   ArduinoOTA.onEnd([]() {
-    Serial.println("\nEnd");
     rcv.start();
     doingota = false;
   });
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-  });
   ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) {
-      Serial.println("Auth Failed");
-    } else if (error == OTA_BEGIN_ERROR) {
-      Serial.println("Begin Failed");
-    } else if (error == OTA_CONNECT_ERROR) {
-      Serial.println("Connect Failed");
-    } else if (error == OTA_RECEIVE_ERROR) {
-      Serial.println("Receive Failed");
-    } else if (error == OTA_END_ERROR) {
-      Serial.println("End Failed");
-    }
+    ShowFullScreenStatus("ota failed");
+    delay(1000);
     rcv.start();
     doingota = false;
   });
   ArduinoOTA.begin();
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
 
   // Buttons
   pinMode(BUTTON1_PIN, INPUT);
@@ -190,6 +174,7 @@ void setup()
   rcv.start();
   insidetemp.begin();
   insidetemp.setResolution(12);
+  insidetemp.setWaitForConversion(false);
 }
 
 #ifdef DEBUG
@@ -218,7 +203,6 @@ public:
     while(size--) concat((char)*buffer++);
   }
   virtual int availableForWrite() { return 100; } // Whatever??
-
 };
 
 // Format a temperature in 10ths of degrees to a nice string.
@@ -242,29 +226,19 @@ void loop()
   ArduinoOTA.handle();
   if ( doingota ) return;
 
-  timestamp = millis();                 // Freeze the time
+  timestamp = millis(); // Freeze the time
   bool displayChanged = false;          // We only want to update the display if displayed values changed.
   bool controlValuesChanged = false;    // We only want to calculate the logic when input values changed (a bit over-the-top...)
 
   // outside temperature, received by RF433
   if ( outsideTemperature != INVALID_TEMP && timestamp - outsideTimestamp > TEMP_VALIDITY)
   {
-    DEBUGONLY(LogTime());
-    DEBUGONLY(Serial.print("Invalidated outside T from "));
-    DEBUGONLY(Serial.print(outsideTemperature));
-    DEBUGONLY(Serial.print(" "));
-    DEBUGONLY(Serial.print(timestamp));
-    DEBUGONLY(Serial.print(" "));
-    DEBUGONLY(Serial.println(outsideTimestamp));
     outsideTemperature = INVALID_TEMP;
   }
   if ( outsidePreviousTemperature != outsideTemperature )
   {
     outsidePreviousTemperature = outsideTemperature;
     displayChanged = true;
-    DEBUGONLY(LogTime());
-    DEBUGONLY(Serial.print("Outside temp changed to "));
-    DEBUGONLY(Serial.println(outsideTemperature));
   }
 
   // Communication from pump controller
@@ -276,7 +250,8 @@ void loop()
     {
       controlValuesChanged = true;
       displayChanged = true;
-      waterTemperature = communicator.m_temperature;
+      if ( communicator.m_temperature > 0 ) waterTemperature = communicator.m_temperature;
+      else                                  waterTemperature = INVALID_TEMP;
     }
     if ( isPumpForced != communicator.m_pumpForcedOn )
     {
@@ -308,21 +283,35 @@ void loop()
     waterTemperature = INVALID_TEMP;
   }
 
-   // Inside temperature, measured locally
-  if ( timestamp - insideTimestamp > MEASURE_INTERVAL )
+  timestamp = millis(); // Freeze the time again, communication might have been lengthy
+
+  // Inside temperature, measured locally
+  if ( insideRequested )
   {
-    insideTimestamp = timestamp;
-    insidetemp.requestTemperatures();
-    int temp = insidetemp.getTempCByIndex(0) * 10;
-    if ( temp < -100 ) temp = INVALID_TEMP;
-    if ( temp != insideTemperature )
+    if ( timestamp - insideTimestamp > DS18B20_DELAY )
     {
-      insideTemperature = temp;
-      displayChanged = true;
-      controlValuesChanged = true;
-      DEBUGONLY(LogTime());
-      DEBUGONLY(Serial.print("Inside temp changed to "));
-      DEBUGONLY(Serial.println(insideTemperature));
+      insideRequested = false;
+      insideTimestamp = timestamp;
+      int temp = insidetemp.getTempCByIndex(0) * 10;
+      if ( temp < -100 ) temp = INVALID_TEMP;
+      if ( temp != insideTemperature )
+      {
+        insideTemperature = temp;
+        displayChanged = true;
+        controlValuesChanged = true;
+        DEBUGONLY(LogTime());
+        DEBUGONLY(Serial.print("Inside temp changed to "));
+        DEBUGONLY(Serial.println(insideTemperature));
+      }
+    }
+  }
+  else
+  {
+    if ( timestamp - insideTimestamp > MEASURE_INTERVAL )
+    {
+      insidetemp.requestTemperatures(); // takes about 3/4s
+      insideRequested = true;
+      insideTimestamp = timestamp;
     }
   }
 
@@ -482,4 +471,7 @@ void loop()
     display.display();
     displayChanged = false;
   }
+
+  // Prevent a power-sucking 100% CPU loop.
+  delay(10);
 } // loop()

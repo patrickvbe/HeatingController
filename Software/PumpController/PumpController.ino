@@ -2,7 +2,7 @@
 #include <DallasTemperature.h>
 #include "src/InterUnitCommunication/InterUnitCommunication.h"
 
-#define DEBUG
+//#define DEBUG
 #ifdef DEBUG
 #define DEBUGONLY(statement) statement;
 #else
@@ -24,7 +24,7 @@ const int INVALID_TEMP = -1000;
 #else
 #define MINIMUM_COMMUNICATION_INTERVAL  90000UL
 #define MASTER_VALIDITY                300000UL
-#define MEASURE_INTERVAL                10000UL
+#define MEASURE_INTERVAL                15000UL
 #define FORCE_TIME_DURATION            300000UL
 #define MAX_OFF_PERIOD          1000UL*60*60*24
 #endif
@@ -205,6 +205,7 @@ void loop()
   {
     DEBUGONLY(LogTime());
     DEBUGONLY(Serial.println(F("Send update to our master.")));
+    // Water temp <= 0 is handled as 'ivalid' by the master.
     communicator.Send(waterTemperature > 0 ? waterTemperature : 0, isPumpOn, isForcedOn);
     masterSendTimestamp = timestamp;
     updateMaster = false;    
