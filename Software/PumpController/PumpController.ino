@@ -210,5 +210,7 @@ void loop()
     masterSendTimestamp = timestamp;
     updateMaster = false;    
   }
-
+  
+  // Prevent a power-sucking 100% CPU loop.
+  delay(20);
 } // loop()

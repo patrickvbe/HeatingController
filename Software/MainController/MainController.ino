@@ -16,7 +16,7 @@ bool doingota = false;
 #include "src/RF433/RF433.h"
 #include "src/InterUnitCommunication/InterUnitCommunication.h"
 
-//#define DEBUG;
+#define DEBUG;
 #ifdef DEBUG
   #define DEBUGONLY(statement) statement;
 #else
@@ -57,11 +57,11 @@ const int INVALID_TEMP =       -1000;
 #define DISPLAY_ADDRESS 0x3C
 #define SDA_PIN 12
 #define SCL_PIN 14
-#include <SH1106Wire.h>
-//#include <SSD1306Wire.h>
+//#include <SH1106Wire.h>
+#include <SSD1306Wire.h>
 #include "Open_Sans_Condensed_Bold_30.h"
-//SSD1306Wire  display(DISPLAY_ADDRESS, SDA_PIN, SCL_PIN);
-SH1106Wire  display(DISPLAY_ADDRESS, SDA_PIN, SCL_PIN);
+SSD1306Wire  display(DISPLAY_ADDRESS, SDA_PIN, SCL_PIN);
+//SH1106Wire  display(DISPLAY_ADDRESS, SDA_PIN, SCL_PIN);
 
 // The values we preserve
 unsigned long LastValidPumpTimestamp = 0;                   // The last time we received valid information from the pump unit.
@@ -79,13 +79,18 @@ int           waterTemperatureSetpoint = 220;               // CV water temperat
 int           insideTemperatureSetpoint = 200;              // Room temperature setpoint to turn the pump on / off. Might be configurable in the future.
 int           displaymode = 0;                              // What to show on the screen
 unsigned long outsideTimestamp  = 0;                        // Timestamp of the last valid outside temperature received.
-unsigned long insideTimestamp = 0;                          // Timestamp the inside temperature was last measured.
+unsigned long insideTimestamp = -MEASURE_INTERVAL;          // Timestamp the inside temperature was last measured.
 unsigned long timestamp;                                    // The globall frozen time.
 unsigned long lastforcedon=0;
 unsigned long displayupdated=0;
 bool          insideRequested = false;
 bool          Button1Down = false;
 bool          Button2Down = false;
+bool          displayChanged = false;          // We only want to update the display if displayed values changed.
+char          wifiStatus = '-'; // '-' not connected, '+' connected, '#' got IP.
+WiFiEventHandler mConnectHandler, mDisConnectHandler, mGotIpHandler;
+const unsigned long WIFI_TRY_INTERVAL = 60000;
+unsigned long lastWiFiTry = -WIFI_TRY_INTERVAL;
 
 static char* SColon = ": ";
 
@@ -133,17 +138,28 @@ void setup()
   // Display
   display.init();
   display.flipScreenVertically();
-  ShowFullScreenStatus("Booting");
 
-  // OTA, bit rude currently, needs to boot without WiFi.
   WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    ShowFullScreenStatus("No WiFi");
-    delay(5000);
-    ESP.restart();
-  }
-  ArduinoOTA.setHostname("HeatController");
+  WiFi.disconnect() ;
+  WiFi.persistent(false);
+  mDisConnectHandler = WiFi.onStationModeDisconnected([](const WiFiEventStationModeDisconnected&)
+  {
+    wifiStatus = '-';
+    displayChanged = true; 
+  });
+  mConnectHandler = WiFi.onStationModeConnected([](const WiFiEventStationModeConnected&)
+  {
+    wifiStatus = '+';
+    displayChanged = true;
+  });
+  mGotIpHandler = WiFi.onStationModeGotIP([](const WiFiEventStationModeGotIP&)
+  {
+    wifiStatus = '#';
+    displayChanged = true;
+  });
+  
+  //ArduinoOTA.setHostname("HeatController");
+  ArduinoOTA.setHostname("DevHeat");
   ArduinoOTA.onStart([]() {
     doingota = true;
     rcv.stop();
@@ -227,7 +243,15 @@ void loop()
   if ( doingota ) return;
 
   timestamp = millis(); // Freeze the time
-  bool displayChanged = false;          // We only want to update the display if displayed values changed.
+
+  // Try to stay connected to the WiFi.
+  if (WiFi.status() != WL_CONNECTED && wifiStatus != '#' && timestamp - lastWiFiTry > WIFI_TRY_INTERVAL)
+  { 
+    lastWiFiTry = timestamp;
+    WiFi.disconnect() ;
+    WiFi.begin ( ssid, password );  
+  }
+
   bool controlValuesChanged = false;    // We only want to calculate the logic when input values changed (a bit over-the-top...)
 
   // outside temperature, received by RF433
@@ -293,7 +317,12 @@ void loop()
       insideRequested = false;
       insideTimestamp = timestamp;
       int temp = insidetemp.getTempCByIndex(0) * 10;
-      if ( temp < -100 ) temp = INVALID_TEMP;
+      if ( temp < -100 )
+      {
+        temp = INVALID_TEMP;
+        DEBUGONLY(LogTime());
+        DEBUGONLY(Serial.println("Invalid inside temperature"));
+      }
       if ( temp != insideTemperature )
       {
         insideTemperature = temp;
@@ -312,6 +341,8 @@ void loop()
       insidetemp.requestTemperatures(); // takes about 3/4s
       insideRequested = true;
       insideTimestamp = timestamp;
+      DEBUGONLY(LogTime());
+      DEBUGONLY(Serial.println("Requested inside temperature"));
     }
   }
 
@@ -401,6 +432,8 @@ void loop()
         str = "CV: --";
       }
       display.drawString(0, 46, str);
+      str = wifiStatus;
+      display.drawString(60, 46, str);
       display.setTextAlignment(TEXT_ALIGN_RIGHT);
       if ( pumpCommunicationOK )
       {
@@ -473,5 +506,5 @@ void loop()
   }
 
   // Prevent a power-sucking 100% CPU loop.
-  delay(10);
+  delay(20);
 } // loop()
