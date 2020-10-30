@@ -1,2 +1,3 @@
 #.vscode/
 src
+network_secrets.h

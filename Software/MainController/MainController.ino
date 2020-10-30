@@ -16,7 +16,7 @@ bool doingota = false;
 #include "src/RF433/RF433.h"
 #include "src/InterUnitCommunication/InterUnitCommunication.h"
 
-#define DEBUG;
+//#define DEBUG;
 #ifdef DEBUG
   #define DEBUGONLY(statement) statement;
 #else
@@ -57,11 +57,16 @@ const int INVALID_TEMP =       -1000;
 #define DISPLAY_ADDRESS 0x3C
 #define SDA_PIN 12
 #define SCL_PIN 14
-//#include <SH1106Wire.h>
-#include <SSD1306Wire.h>
+
+#ifdef DEBUG
+  #include <SSD1306Wire.h>
+  SSD1306Wire  display(DISPLAY_ADDRESS, SDA_PIN, SCL_PIN);
+#else
+  #include <SH1106Wire.h>
+  SH1106Wire  display(DISPLAY_ADDRESS, SDA_PIN, SCL_PIN);
+#endif
+
 #include "Open_Sans_Condensed_Bold_30.h"
-SSD1306Wire  display(DISPLAY_ADDRESS, SDA_PIN, SCL_PIN);
-//SH1106Wire  display(DISPLAY_ADDRESS, SDA_PIN, SCL_PIN);
 
 // The values we preserve
 unsigned long LastValidPumpTimestamp = 0;                   // The last time we received valid information from the pump unit.
@@ -156,10 +161,14 @@ void setup()
   {
     wifiStatus = '#';
     displayChanged = true;
+    ArduinoOTA.begin();
   });
-  
-  //ArduinoOTA.setHostname("HeatController");
-  ArduinoOTA.setHostname("DevHeat");
+
+  #ifdef DEBUG
+    ArduinoOTA.setHostname("DevHeat");
+  #else
+    ArduinoOTA.setHostname("HeatController");
+  #endif
   ArduinoOTA.onStart([]() {
     doingota = true;
     rcv.stop();
@@ -181,7 +190,6 @@ void setup()
     rcv.start();
     doingota = false;
   });
-  ArduinoOTA.begin();
 
   // Buttons
   pinMode(BUTTON1_PIN, INPUT);
