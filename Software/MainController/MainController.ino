@@ -32,8 +32,8 @@ bool doingota = false;
 #define RECEIVER_PIN  4
 #define DS18B20_PIN  13
 #define DS18B20_DELAY 1000
-#define BUTTON1_PIN 0
-#define BUTTON2_PIN 2
+#define BUTTON1_PIN 2
+#define BUTTON2_PIN 0
 
 const int INVALID_TEMP =       -1000;
 
@@ -76,9 +76,7 @@ bool          isPumpOn = false;                             // Pump status recei
 bool          isPumpForced = false;                         // Forced status received from the pump unit.
 bool          pumpNeedsOn = false;                          // Our computed / wanted pump status.
 bool          pumpCommunicationOK = false;                  // Did we receive valid and on-time communication from the pump unit?
-bool          sendToPump = false;                           // Do we need to update the pump controller?
 int           outsideTemperature = INVALID_TEMP;            // New temperature received from the weather station.
-int           outsidePreviousTemperature = INVALID_TEMP;    // Previous outside temperature (now displayed)
 int           insideTemperature  = INVALID_TEMP;            // Last measured inside temperature.
 int           waterTemperatureSetpoint = 220;               // CV water temperature setpoint to turn the pump on / off. Might be configurable in the future.
 int           insideTemperatureSetpoint = 200;              // Room temperature setpoint to turn the pump on / off. Might be configurable in the future.
@@ -99,27 +97,8 @@ unsigned long lastWiFiTry = -WIFI_TRY_INTERVAL;
 
 static char* SColon = ": ";
 
-// Interrupt routine for RF433 communication.
-void code_received(int protocol, unsigned long code, unsigned long timestamp)
-{
-  if ( protocol == WEATHERSTATION)
-  {
-    outsideTemperature = receiver::convertCodeToTemp(code);
-    outsideTimestamp = timestamp;
-    DEBUGONLY(Serial.print("Outside: "));
-    DEBUGONLY(Serial.println(outsideTemperature));
-  }
-  // Serial.print("Protocol: ");
-  // Serial.print(protocol);
-  // Serial.print(", code:");
-  // Serial.print(code, BIN);
-  // Serial.print(" / ");
-  // Serial.print(code, HEX);
-  // Serial.println();
-}
-
 // The objects / sensors we have
-receiver                rcv(RECEIVER_PIN, code_received);
+receiver                rcv(RECEIVER_PIN);
 sender                  snd(SENDER_PIN);
 // RXD0 = IO3 = TX
 // TXD0 = IO1 = RX
@@ -244,6 +223,11 @@ void ConcatTemp(int temp, String& str)
   }
 }
 
+boolean ControlValuesAreValid()
+{
+  return waterTemperature != INVALID_TEMP && insideTemperature != INVALID_TEMP;
+}
+
 void loop()
 {
   // OTA
@@ -261,16 +245,34 @@ void loop()
   }
 
   bool controlValuesChanged = false;    // We only want to calculate the logic when input values changed (a bit over-the-top...)
+  bool sendToPump = false;              // Do we need to update the pump controller?
 
-  // outside temperature, received by RF433
+  // outside temperature, received by RF433?
+  int protocol;
+  unsigned long code;
+  if ( rcv.receive(protocol, code) )
+  {
+    // Serial.print("Protocol: ");
+    // Serial.print(protocol);
+    // Serial.print(", code:");
+    // Serial.print(code, BIN);
+    // Serial.print(" / ");
+    // Serial.print(code, HEX);
+    // Serial.println();
+    if ( protocol == WEATHERSTATION)
+    {
+      outsideTimestamp = timestamp;
+      int temp = receiver::convertCodeToTemp(code);
+      if ( outsideTemperature != temp )
+      {
+        outsideTemperature = temp;
+        displayChanged = true;
+      }
+    }
+  }
   if ( outsideTemperature != INVALID_TEMP && timestamp - outsideTimestamp > TEMP_VALIDITY)
   {
     outsideTemperature = INVALID_TEMP;
-  }
-  if ( outsidePreviousTemperature != outsideTemperature )
-  {
-    outsidePreviousTemperature = outsideTemperature;
-    displayChanged = true;
   }
 
   // Communication from pump controller
@@ -354,46 +356,42 @@ void loop()
     }
   }
 
- // The actual controlling actions.
-  if ( controlValuesChanged )
+  // The actual controlling actions.
+  if ( controlValuesChanged && ControlValuesAreValid() )
   {
-    if ( waterTemperature != INVALID_TEMP && insideTemperature != INVALID_TEMP )
+    if ( pumpNeedsOn )
     {
-      if ( pumpNeedsOn )
+      if ( insideTemperature >= insideTemperatureSetpoint + 5 || waterTemperature <= waterTemperatureSetpoint )
       {
-        if ( insideTemperature >= insideTemperatureSetpoint + 5 || waterTemperature <= waterTemperatureSetpoint )
-        {
-          pumpNeedsOn = false;
-          displayChanged = true;
-          sendToPump = true;
-        }
+        pumpNeedsOn = false;
+        displayChanged = true;
+        sendToPump = true;
       }
-      else
-      {
-        if ( insideTemperature <= insideTemperatureSetpoint && waterTemperature >= waterTemperatureSetpoint + 10 )
-        {
-          pumpNeedsOn = true;
-          displayChanged = true;
-          sendToPump = true;
-        }
-      }      
     }
+    else
+    {
+      if ( insideTemperature <= insideTemperatureSetpoint && waterTemperature >= waterTemperatureSetpoint + 10 )
+      {
+        pumpNeedsOn = true;
+        displayChanged = true;
+        sendToPump = true;
+      }
+    }      
   }
-
+  
   // Update the pump at least every MINIMUM_COMMUNICATION_INTERVAL ms.
   if ( !sendToPump && timestamp - pumpSendTimestamp > MINIMUM_COMMUNICATION_INTERVAL )
   {
     sendToPump = true;
   }
 
-  // If needed, communicate our status to the master.
-  if ( sendToPump )
+  // If needed, communicate our status to the pump. But only if we have something valid to tell.
+  if ( sendToPump && ControlValuesAreValid() )
   {
     communicator.Send(waterTemperatureSetpoint, pumpNeedsOn, isPumpForced /* ignored by pump */ );
     DEBUGONLY(LogTime());
     DEBUGONLY(Serial.println(F("Send update to pump.")));
     pumpSendTimestamp = timestamp;
-    sendToPump = false;
   }
 
   // Button control

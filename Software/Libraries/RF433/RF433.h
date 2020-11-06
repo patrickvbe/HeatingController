@@ -34,36 +34,29 @@ public:
 class receiver
 {
 public:
-// Types
-  typedef void(*received_callback)(int protocol, unsigned long code, unsigned long timestamp);
-
 // Constructors / destructor
-  receiver(const int recpin, received_callback reccallback = 0);
+  receiver(const int recpin);
 
 // Functionality
   void start();
   void stop();
+  boolean receive(int& protocol, unsigned long& code);
   static int convertCodeToTemp(const unsigned long code);
 
 // Data members
   int pin;
 
-  // This is where the code will be (usefull if you don't use the callback)
-  volatile unsigned long code = 0;
-  volatile unsigned long code_timestamp = 0;  // millis()
-  volatile int           code_protocol = -1;
-
 private:
 // Functionality
   static void sread_interrupt();
   void read_interrupt();
-  bool decode();
-  bool decodeprotocol(const int protocol_id);
+  bool decode(int& protocol, unsigned long& code);
+  bool decodeprotocol(const int protocol_id, unsigned long& code);
 
 // Data members
-  volatile int counter;
-  volatile unsigned long data[MAXRECORD];
-  volatile unsigned long last_timestamp;
-  received_callback callback;
+  volatile int            counter;
+  volatile unsigned long  data[MAXRECORD];
+  volatile unsigned long  last_timestamp;
+  volatile boolean        code_waiting;
   static receiver* me;  // No arguments allowed for the interrupt, so: it's me!
 };

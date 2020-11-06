@@ -67,17 +67,39 @@ void sender::send(const int protocol_id, const unsigned long code, int repeat)
 
 receiver* receiver::me = 0;
 
-receiver::receiver(const int recpin, received_callback reccallback)
+receiver::receiver(const int recpin)
 {
+  code_waiting = false;
   last_timestamp = micros();
   counter = 0;
-  callback = reccallback;
   pin = recpin;
   pinMode(pin, INPUT);
   receiver::me = this;
 }
 
-// weatherstation format: 1111111 000000010100101 111110011011, middle part is temperatur in 10ths C
+boolean receiver::receive(int& protocol, unsigned long& code)
+{
+  if ( code_waiting )
+  {
+    /* Debug code to analyse new signals.
+    Serial.print(counter);
+    Serial.print(": ");
+    for (int idx=0; idx < counter; idx++)
+    {
+      Serial.print(data[idx]);
+      Serial.print(", ");
+    }
+    Serial.println();
+    //*/
+    boolean result = decode(protocol, code);
+    counter = 0;
+    code_waiting = false;
+    return result;
+  }
+  return false;
+}
+
+// weatherstation format: 1111111 000000010100101 111110011011, middle part is temperature in 10ths C
 int receiver::convertCodeToTemp(const unsigned long code)
 {
   int temp = (code >> 12) & 0xFFF;
@@ -99,22 +121,26 @@ void receiver::stop()
 
 ICACHE_RAM_ATTR void receiver::sread_interrupt()
 {
-  receiver::me->read_interrupt();
+  if ( !me->code_waiting )
+  {
+    receiver::me->read_interrupt();
+  }
 }
 
-bool receiver::decode()
+bool receiver::decode(int& protocol, unsigned long& code)
 {
   for (int idx = 0; idx < (sizeof(PROTOCOLS) / sizeof(Protocol)); idx++)
   {
-    if (decodeprotocol(idx))
+    if (decodeprotocol(idx, code))
     {
+      protocol = idx;
       return true;
     }
   }
   return false;
 }
 
-bool receiver::decodeprotocol(const int protocol_id)
+bool receiver::decodeprotocol(const int protocol_id, unsigned long& result_code)
 {
   const Protocol& protocol = PROTOCOLS[protocol_id];
   if (counter < protocol.signallength)
@@ -165,58 +191,24 @@ bool receiver::decodeprotocol(const int protocol_id)
   {
     return false;
   }
-  // Pass it to the user.
-  code = code;
-  code_timestamp = millis();
-  code_protocol = protocol_id;
-  if (callback)
-  {
-    callback(protocol_id, code, code_timestamp);
-  }
+  result_code = code;
   return true;
 }
 
-void receiver::read_interrupt()
+ICACHE_RAM_ATTR void receiver::read_interrupt()
 {
   unsigned long timestamp = micros();
   unsigned long duration = timestamp - last_timestamp;
-  //            4294966700
-  // if ( last_timestamp > timestamp )
-  // {
-  //   Serial.print("* ");
-  //   Serial.print(last_timestamp);
-  //   Serial.print(" ");
-  //   Serial.print(timestamp);
-  //   Serial.print(" ");
-  //   Serial.println(duration);
-  // }
   last_timestamp = timestamp;
-  //Serial.println("i");
 
   // Pulses shorter than 250us are usually noise. But my smartwares remote drifts to almost 225us...
   if (duration > DURATIONTHRESHOLD1 || (duration > DURATIONTHRESHOLD2 && counter > 0))
   {
-    // Serial.print(duration);
-    // Serial.print(", ");
-    // Serial.println(counter);
     data[counter++] = duration;
     if (duration > SYNCPULSETHRESHOLD || counter == MAXRECORD)
     {
-      if (counter > 10)
-      {
-        /* Debug code to analyse new signals.
-        Serial.print(counter);
-        Serial.print(": ");
-        for (int idx=0; idx < counter; idx++)
-        {
-          Serial.print(data[idx]);
-          Serial.print(", ");
-        }
-        Serial.println();
-        //*/
-        decode();
-      }
-      counter = 0;
+      if (counter > 10) code_waiting = true;
+      else counter = 0;
     }
   }
   else
