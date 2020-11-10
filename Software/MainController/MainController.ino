@@ -16,27 +16,43 @@ bool doingota = false;
 #include "src/RF433/RF433.h"
 #include "src/InterUnitCommunication/InterUnitCommunication.h"
 
-//#define DEBUG;
+#define DEBUG;
 #ifdef DEBUG
   #define DEBUGONLY(statement) statement;
 #else
   #define DEBUGONLY(statement)
 #endif
 
-// IO5 = D1
-// IO4 = D2
-// IO13 = D7
+//////////////////////////////////////////////////////////////
+// Pin settings
+//////////////////////////////////////////////////////////////
 // IO0 = D3, has pull-up resistor
+// IO1 = TXD0 = RX
 // IO2 = D4, has pull-up resistor
+// IO3 = RXD0 = TX
+// IO4 = D2
+// IO5 = D1
+// IO12 = D6
+// IO13 = D7
+// IO14 = D5
+
+// RF433:
 #define SENDER_PIN    5
 #define RECEIVER_PIN  4
+// Inside temperature
 #define DS18B20_PIN  13
 #define DS18B20_DELAY 1000
+// Buttons
 #define BUTTON1_PIN 2
 #define BUTTON2_PIN 0
+// Display
+#define DISPLAY_ADDRESS 0x3C
+#define SDA_PIN 12
+#define SCL_PIN 14
 
-const int INVALID_TEMP =       -1000;
-
+//////////////////////////////////////////////////////////////
+// Control constants
+//////////////////////////////////////////////////////////////
 #ifdef DEBUG
 #define TEMP_VALIDITY                  900000
 #define MINIMUM_COMMUNICATION_INTERVAL  25000
@@ -51,13 +67,18 @@ const int INVALID_TEMP =       -1000;
 #define FORCE_TIME_DURATION            300000
 #endif
 
-// Display
-// IO12 = D6
-// IO14 = D5
-#define DISPLAY_ADDRESS 0x3C
-#define SDA_PIN 12
-#define SCL_PIN 14
+// Dynamic control values
+#include "ControlValues.h"
+ControlValues ctrl;
 
+// WiFi
+WiFiEventHandler mConnectHandler, mDisConnectHandler, mGotIpHandler;
+const unsigned long WIFI_TRY_INTERVAL = 60000;
+unsigned long lastWiFiTry = -WIFI_TRY_INTERVAL;
+
+//////////////////////////////////////////////////////////////
+// Include display control
+//////////////////////////////////////////////////////////////
 #ifdef DEBUG
   #include <SSD1306Wire.h>
   SSD1306Wire  display(DISPLAY_ADDRESS, SDA_PIN, SCL_PIN);
@@ -66,46 +87,26 @@ const int INVALID_TEMP =       -1000;
   SH1106Wire  display(DISPLAY_ADDRESS, SDA_PIN, SCL_PIN);
 #endif
 
+// Fonts
 #include "Open_Sans_Condensed_Bold_30.h"
 
-// The values we preserve
-unsigned long LastValidPumpTimestamp = 0;                   // The last time we received valid information from the pump unit.
-unsigned long pumpSendTimestamp = 0;                        // Timestamp of last information send to the pump unit.
-int           waterTemperature  = INVALID_TEMP;             // CV water temperature received from the pump unit.
-bool          isPumpOn = false;                             // Pump status received from the pump unit.
-bool          isPumpForced = false;                         // Forced status received from the pump unit.
-bool          pumpNeedsOn = false;                          // Our computed / wanted pump status.
-bool          pumpCommunicationOK = false;                  // Did we receive valid and on-time communication from the pump unit?
-int           outsideTemperature = INVALID_TEMP;            // New temperature received from the weather station.
-int           insideTemperature  = INVALID_TEMP;            // Last measured inside temperature.
-int           waterTemperatureSetpoint = 220;               // CV water temperature setpoint to turn the pump on / off. Might be configurable in the future.
-int           insideTemperatureSetpoint = 200;              // Room temperature setpoint to turn the pump on / off. Might be configurable in the future.
-int           displaymode = 0;                              // What to show on the screen
-unsigned long outsideTimestamp  = 0;                        // Timestamp of the last valid outside temperature received.
-unsigned long insideTimestamp = -MEASURE_INTERVAL;          // Timestamp the inside temperature was last measured.
-unsigned long timestamp;                                    // The globall frozen time.
-unsigned long lastforcedon=0;
-unsigned long displayupdated=0;
-bool          insideRequested = false;
-bool          Button1Down = false;
-bool          Button2Down = false;
-bool          displayChanged = false;          // We only want to update the display if displayed values changed.
-char          wifiStatus = '-'; // '-' not connected, '+' connected, '#' got IP.
-WiFiEventHandler mConnectHandler, mDisConnectHandler, mGotIpHandler;
-const unsigned long WIFI_TRY_INTERVAL = 60000;
-unsigned long lastWiFiTry = -WIFI_TRY_INTERVAL;
+#include "Screen.h"
+Screen screen(display, ctrl, BUTTON1_PIN, BUTTON2_PIN);
 
 static char* SColon = ": ";
 
+//////////////////////////////////////////////////////////////
 // The objects / sensors we have
+//////////////////////////////////////////////////////////////
 receiver                rcv(RECEIVER_PIN);
 sender                  snd(SENDER_PIN);
-// RXD0 = IO3 = TX
-// TXD0 = IO1 = RX
 InterUnitCommunication  communicator;  // For now, uses the default serial port.
 OneWire                 onewire(DS18B20_PIN);
 DallasTemperature       insidetemp(&onewire);
 
+/***************************************************************
+ * Show a message full-screen in a big font.
+ ***************************************************************/
 void ShowFullScreenStatus(char* status)
 {
   display.clear();
@@ -115,39 +116,50 @@ void ShowFullScreenStatus(char* status)
   display.display();
 }
 
+/***************************************************************
+ * The global initialization function.
+ ***************************************************************/
 void setup()
 {
   Serial.begin(115200);
 
-  // Display
+  //////////////////////////////////////////////////////////////
+  // Display setup
+  //////////////////////////////////////////////////////////////
   display.init();
   display.flipScreenVertically();
 
+  //////////////////////////////////////////////////////////////
+  // WiFi setup
+  //////////////////////////////////////////////////////////////
   WiFi.mode(WIFI_STA);
   WiFi.disconnect() ;
   WiFi.persistent(false);
   mDisConnectHandler = WiFi.onStationModeDisconnected([](const WiFiEventStationModeDisconnected&)
   {
-    wifiStatus = '-';
-    displayChanged = true; 
+    ctrl.wifiStatus = '-';
+    screen.TriggerUpdate(); 
   });
   mConnectHandler = WiFi.onStationModeConnected([](const WiFiEventStationModeConnected&)
   {
-    wifiStatus = '+';
-    displayChanged = true;
+    ctrl.wifiStatus = '+';
+    screen.TriggerUpdate(); 
   });
   mGotIpHandler = WiFi.onStationModeGotIP([](const WiFiEventStationModeGotIP&)
   {
-    wifiStatus = '#';
-    displayChanged = true;
+    ctrl.wifiStatus = '#';
+    screen.TriggerUpdate(); 
     ArduinoOTA.begin();
   });
 
-  #ifdef DEBUG
-    ArduinoOTA.setHostname("DevHeat");
-  #else
-    ArduinoOTA.setHostname("HeatController");
-  #endif
+  //////////////////////////////////////////////////////////////
+  // OTA setup
+  //////////////////////////////////////////////////////////////
+#ifdef DEBUG
+  ArduinoOTA.setHostname("DevHeat");
+#else
+  ArduinoOTA.setHostname("HeatController");
+#endif
   ArduinoOTA.onStart([]() {
     doingota = true;
     rcv.stop();
@@ -170,16 +182,18 @@ void setup()
     doingota = false;
   });
 
-  // Buttons
-  pinMode(BUTTON1_PIN, INPUT);
-  pinMode(BUTTON2_PIN, INPUT);
-
+  //////////////////////////////////////////////////////////////
+  // 
+  //////////////////////////////////////////////////////////////
   rcv.start();
   insidetemp.begin();
   insidetemp.setResolution(12);
   insidetemp.setWaitForConversion(false);
 }
 
+/***************************************************************
+ * Log time since startup in a nicely readable format.
+ ***************************************************************/
 #ifdef DEBUG
 void LogTime()
 {
@@ -194,6 +208,9 @@ void LogTime()
 }
 #endif
 
+/***************************************************************
+ * String formatting class, compatible with the Print interface
+ ***************************************************************/
 class PrintString : public Print, public String
 {
 public:
@@ -208,7 +225,9 @@ public:
   virtual int availableForWrite() { return 100; } // Whatever??
 };
 
-// Format a temperature in 10ths of degrees to a nice string.
+/***************************************************************
+ * Format a temperature in 10ths of degrees to a nice string.
+ ***************************************************************/
 void ConcatTemp(int temp, String& str)
 {
   if ( temp != INVALID_TEMP )
@@ -223,20 +242,33 @@ void ConcatTemp(int temp, String& str)
   }
 }
 
+/***************************************************************
+ * Check if the control values are valid
+ ***************************************************************/
 boolean ControlValuesAreValid()
 {
-  return waterTemperature != INVALID_TEMP && insideTemperature != INVALID_TEMP;
+  return ctrl.waterTemperature != INVALID_TEMP && ctrl.insideTemperature != INVALID_TEMP;
 }
 
+/***************************************************************
+ * Main loop
+ ***************************************************************/
 void loop()
 {
+  bool controlValuesChanged = false;    // We only want to calculate the logic when input values changed (a bit over-the-top...)
+  bool sendToPump = false;              // Do we need to update the pump controller?
+
+  //////////////////////////////////////////////////////////////
   // OTA
+  //////////////////////////////////////////////////////////////
   ArduinoOTA.handle();
   if ( doingota ) return;
 
   timestamp = millis(); // Freeze the time
 
+  //////////////////////////////////////////////////////////////
   // Try to stay connected to the WiFi.
+  //////////////////////////////////////////////////////////////
   if (WiFi.status() != WL_CONNECTED && wifiStatus != '#' && timestamp - lastWiFiTry > WIFI_TRY_INTERVAL)
   { 
     lastWiFiTry = timestamp;
@@ -244,10 +276,9 @@ void loop()
     WiFi.begin ( ssid, password );  
   }
 
-  bool controlValuesChanged = false;    // We only want to calculate the logic when input values changed (a bit over-the-top...)
-  bool sendToPump = false;              // Do we need to update the pump controller?
-
+  //////////////////////////////////////////////////////////////
   // outside temperature, received by RF433?
+  //////////////////////////////////////////////////////////////
   int protocol;
   unsigned long code;
   if ( rcv.receive(protocol, code) )
@@ -261,71 +292,75 @@ void loop()
     // Serial.println();
     if ( protocol == WEATHERSTATION)
     {
-      outsideTimestamp = timestamp;
+      ctrl.outsideTimestamp = timestamp;
       int temp = receiver::convertCodeToTemp(code);
-      if ( outsideTemperature != temp )
+      if ( ctrl.outsideTemperature != temp )
       {
-        outsideTemperature = temp;
-        displayChanged = true;
+        ctrl.outsideTemperature = temp;
+        screen.TriggerUpdate();
       }
     }
   }
-  if ( outsideTemperature != INVALID_TEMP && timestamp - outsideTimestamp > TEMP_VALIDITY)
+  if ( ctrl.outsideTemperature != INVALID_TEMP && timestamp - ctrl.outsideTimestamp > TEMP_VALIDITY)
   {
-    outsideTemperature = INVALID_TEMP;
+    ctrl.outsideTemperature = INVALID_TEMP;
   }
 
+  //////////////////////////////////////////////////////////////
   // Communication from pump controller
+  //////////////////////////////////////////////////////////////
   if ( communicator.Read() )
   {
-    LastValidPumpTimestamp = timestamp;
-    pumpCommunicationOK = true;
-    if ( waterTemperature != communicator.m_temperature )
+    ctrl.LastValidPumpTimestamp = timestamp;
+    ctrl.pumpCommunicationOK = true;
+    if ( ctrl.waterTemperature != communicator.m_temperature )
     {
       controlValuesChanged = true;
-      displayChanged = true;
-      if ( communicator.m_temperature > 0 ) waterTemperature = communicator.m_temperature;
-      else                                  waterTemperature = INVALID_TEMP;
+      screen.TriggerUpdate();
+      if ( communicator.m_temperature > 0 ) ctrl.waterTemperature = communicator.m_temperature;
+      else                                  ctrl.waterTemperature = INVALID_TEMP;
     }
-    if ( isPumpForced != communicator.m_pumpForcedOn )
+    if ( ctrl.isPumpForced != communicator.m_pumpForcedOn )
     {
-      isPumpForced = communicator.m_pumpForcedOn;
-      displayChanged = true;
-      if ( isPumpForced )
+      ctrl.isPumpForced = communicator.m_pumpForcedOn;
+      screen.TriggerUpdate();
+      if ( ctrl.isPumpForced )
       {
-        lastforcedon = timestamp;
+        ctrl.lastforcedon = timestamp;
       }
     }
-    if ( isPumpOn != communicator.m_pumpOn )
+    if ( ctrl.isPumpOn != communicator.m_pumpOn )
     {
-      displayChanged = true;
-      isPumpOn = communicator.m_pumpOn;
+      screen.TriggerUpdate();
+      ctrl.isPumpOn = communicator.m_pumpOn;
       sendToPump = true;  // It's not what we expected, so we might have to update the pump controller.
     }
     DEBUGONLY(LogTime());
     DEBUGONLY(Serial.println("Received update from pump controller"));
   }
   
-  if ( pumpCommunicationOK && timestamp - LastValidPumpTimestamp > PUMP_VALIDITY )
+  if ( ctrl.pumpCommunicationOK && timestamp - ctrl.LastValidPumpTimestamp > PUMP_VALIDITY )
   {
     DEBUGONLY(LogTime());
     DEBUGONLY(Serial.print("Invalidated pump communication "));
     DEBUGONLY(Serial.print(timestamp));
     DEBUGONLY(Serial.print(" "));
     DEBUGONLY(Serial.println(LastValidPumpTimestamp));
-    pumpCommunicationOK = false;
-    waterTemperature = INVALID_TEMP;
+    ctrl.pumpCommunicationOK = false;
+    ctrl.waterTemperature = INVALID_TEMP;
   }
 
   timestamp = millis(); // Freeze the time again, communication might have been lengthy
 
+  //////////////////////////////////////////////////////////////
   // Inside temperature, measured locally
-  if ( insideRequested )
+  //////////////////////////////////////////////////////////////
+  if ( ctrl.insideRequested )
   {
-    if ( timestamp - insideTimestamp > DS18B20_DELAY )
+    if ( timestamp - ctrl.insideTimestamp > DS18B20_DELAY )
     {
-      insideRequested = false;
-      insideTimestamp = timestamp;
+      ctrl.insideRequested = false;
+      ctrl.insideTimestamp = timestamp;
       int temp = insidetemp.getTempCByIndex(0) * 10;
       if ( temp < -100 )
       {
@@ -333,10 +368,10 @@ void loop()
         DEBUGONLY(LogTime());
         DEBUGONLY(Serial.println("Invalid inside temperature"));
       }
-      if ( temp != insideTemperature )
+      if ( temp != ctrl.insideTemperature )
       {
-        insideTemperature = temp;
-        displayChanged = true;
+        ctrl.insideTemperature = temp;
+        screen.TriggerUpdate();
         controlValuesChanged = true;
         DEBUGONLY(LogTime());
         DEBUGONLY(Serial.print("Inside temp changed to "));
@@ -346,41 +381,51 @@ void loop()
   }
   else
   {
-    if ( timestamp - insideTimestamp > MEASURE_INTERVAL )
+    if ( timestamp - ctrl.insideTimestamp > MEASURE_INTERVAL )
     {
       insidetemp.requestTemperatures(); // takes about 3/4s
-      insideRequested = true;
-      insideTimestamp = timestamp;
+      ctrl.insideRequested = true;
+      ctrl.insideTimestamp = timestamp;
       DEBUGONLY(LogTime());
       DEBUGONLY(Serial.println("Requested inside temperature"));
     }
   }
 
+  //////////////////////////////////////////////////////////////
   // The actual controlling actions.
+  //////////////////////////////////////////////////////////////
+  if ( ctrl.insideSetpointDuration != 0 && timestamp - ctrl.insideSetpointStart > ctrl.insideSetpointDuration )
+  {
+    ctrl.insideSetpointDuration = 0;
+    ctrl.insideTemperatureSetpoint = DEFAULT_INSIDE_TEMP_SETPOINT;
+  }
+
   if ( controlValuesChanged && ControlValuesAreValid() )
   {
-    if ( pumpNeedsOn )
+    if ( ctrl.pumpNeedsOn )
     {
-      if ( insideTemperature >= insideTemperatureSetpoint + 5 || waterTemperature <= waterTemperatureSetpoint )
+      if ( ctrl.insideTemperature >= ctrl.insideTemperatureSetpoint + 5 || ctrl.waterTemperature <= ctrl.waterTemperatureSetpoint )
       {
-        pumpNeedsOn = false;
-        displayChanged = true;
-        sendToPump = true;
+        ctrl.pumpNeedsOn = false;
+        screen.TriggerUpdate();
+        ctrl.sendToPump = true;
       }
     }
     else
     {
-      if ( insideTemperature <= insideTemperatureSetpoint && waterTemperature >= waterTemperatureSetpoint + 10 )
+      if ( ctrl.insideTemperature <= ctrl.insideTemperatureSetpoint && ctrl.waterTemperature >= ctrl.waterTemperatureSetpoint + 10 )
       {
-        pumpNeedsOn = true;
-        displayChanged = true;
+        ctrl.pumpNeedsOn = true;
+        screen.TriggerUpdate();
         sendToPump = true;
       }
     }      
   }
   
-  // Update the pump at least every MINIMUM_COMMUNICATION_INTERVAL ms.
-  if ( !sendToPump && timestamp - pumpSendTimestamp > MINIMUM_COMMUNICATION_INTERVAL )
+  //////////////////////////////////////////////////////////////
+  // Communication to the pump controller
+  //////////////////////////////////////////////////////////////
+  if ( !sendToPump && timestamp - ctrl.pumpSendTimestamp > MINIMUM_COMMUNICATION_INTERVAL )
   {
     sendToPump = true;
   }
@@ -388,24 +433,68 @@ void loop()
   // If needed, communicate our status to the pump. But only if we have something valid to tell.
   if ( sendToPump && ControlValuesAreValid() )
   {
-    communicator.Send(waterTemperatureSetpoint, pumpNeedsOn, isPumpForced /* ignored by pump */ );
+    communicator.Send(ctrl.waterTemperatureSetpoint, ctrl.pumpNeedsOn, ctrl.isPumpForced /* ignored by pump */ );
     DEBUGONLY(LogTime());
     DEBUGONLY(Serial.println(F("Send update to pump.")));
-    pumpSendTimestamp = timestamp;
+    ctrl.pumpSendTimestamp = timestamp;
   }
 
-  // Button control
+/***************************************************************
+ * Display modes:
+ * 00: Show temperatures
+ * 01: Show info screen 1
+ * 02: Show info screen 2
+ * 10: Modify inside temperature setpoint (in 10th C)
+ * 11: Modify inside temperature duration (in hours)
+ ***************************************************************/
+
+  //////////////////////////////////////////////////////////////
+  // Button control, still needs some de-bouncing
+  //////////////////////////////////////////////////////////////
+  // Bottom button (white) = display mode
   if ( (digitalRead(BUTTON1_PIN) == LOW) != Button1Down )
   {
     if ( (Button1Down = !Button1Down) )
     {
-      if ( ++displaymode > 2 ) displaymode = 0;
-      displayChanged = true;
+      if      ( displaymode < 10 && ++displaymode > 2 ) displaymode = 0;
+      if      ( displaymode == 10 ) 
+      { 
+        if ( insideSetpointDuration == 0 )
+        insideSetpointStart = timestamp; insideTemperatureSetpoint--; }
+      else if ( displaymode == 11 ) { insideSetpointStart = timestamp; insideSetpointDuration -= min(insideSetpointDuration, 3600000); }
     }
+    displayChanged = true;
   }
+  // Top button (red) = settings mode
+  if ( (digitalRead(BUTTON2_PIN) == LOW) != Button2Down )
+  {
+    if ( (Button1Down = !Button1Down) )
+    {
+      buttonStartTime = timestamp;
+      if ( displaymode < 10 ) displaymode = 10;
+    }
+    else
+    {
+      bool longpress = timestamp - buttonStartTime > 1000;
+      if      ( displaymode == 10 && longpress ) displaymode = 11;
+      else if ( displaymode == 11 && longpress ) displaymode = 0;
+      else if ( displaymode == 10 ) { insideSetpointStart = timestamp; insideTemperatureSetpoint++; }
+      else if ( displaymode == 11 ) { insideSetpointStart = timestamp; insideSetpointDuration += 3600000; }
+    }
+    displayChanged = true;
+  }
+  // Reset display after 10 seconds of no button changes
+  if ( displaymode != 0 && timestamp - buttonStartTime > 10000 )
+  {
+    displaymode = 0;
+    displayChanged = true;
+  }
+
   if ( displaymode == 1 && (timestamp - displayupdated) > 1000 ) displayChanged = true;
 
+  //////////////////////////////////////////////////////////////
   // Update the display for the user.
+  //////////////////////////////////////////////////////////////
   if ( displayChanged )
   {
     const word colonposition = 65;
@@ -511,6 +600,8 @@ void loop()
     displayChanged = false;
   }
 
+  //////////////////////////////////////////////////////////////
   // Prevent a power-sucking 100% CPU loop.
+  //////////////////////////////////////////////////////////////
   delay(20);
-} // loop()
+}
