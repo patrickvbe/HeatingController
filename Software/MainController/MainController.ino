@@ -87,13 +87,8 @@ unsigned long lastWiFiTry = -WIFI_TRY_INTERVAL;
   SH1106Wire  display(DISPLAY_ADDRESS, SDA_PIN, SCL_PIN);
 #endif
 
-// Fonts
-#include "Open_Sans_Condensed_Bold_30.h"
-
 #include "Screen.h"
 Screen screen(display, ctrl, BUTTON1_PIN, BUTTON2_PIN);
-
-static char* SColon = ": ";
 
 //////////////////////////////////////////////////////////////
 // The objects / sensors we have
@@ -107,14 +102,14 @@ DallasTemperature       insidetemp(&onewire);
 /***************************************************************
  * Show a message full-screen in a big font.
  ***************************************************************/
-void ShowFullScreenStatus(char* status)
-{
-  display.clear();
-  display.setTextAlignment(TEXT_ALIGN_LEFT);
-  display.setFont(Open_Sans_Condensed_Bold_30);
-  display.drawString(0, 0, status);
-  display.display();
-}
+// void ShowFullScreenStatus(char* status)
+// {
+//   display.clear();
+//   display.setTextAlignment(TEXT_ALIGN_LEFT);
+//   display.setFont(Open_Sans_Condensed_Bold_30);
+//   display.drawString(0, 0, status);
+//   display.display();
+// }
 
 /***************************************************************
  * The global initialization function.
@@ -163,7 +158,7 @@ void setup()
   ArduinoOTA.onStart([]() {
     doingota = true;
     rcv.stop();
-    ShowFullScreenStatus("OTA");
+    //ShowFullScreenStatus("OTA");
     String type;
     if (ArduinoOTA.getCommand() == U_FLASH) {
       type = "sketch";
@@ -176,7 +171,7 @@ void setup()
     doingota = false;
   });
   ArduinoOTA.onError([](ota_error_t error) {
-    ShowFullScreenStatus("ota failed");
+    //ShowFullScreenStatus("ota failed");
     delay(1000);
     rcv.start();
     doingota = false;
@@ -209,40 +204,6 @@ void LogTime()
 #endif
 
 /***************************************************************
- * String formatting class, compatible with the Print interface
- ***************************************************************/
-class PrintString : public Print, public String
-{
-public:
-  PrintString() : Print(), String() {}
-  PrintString(const char* s) : Print(), String(s) {}
-  virtual size_t write(uint8_t c) { concat((char)c); }
-  virtual size_t write(const uint8_t *buffer, size_t size)
-  {
-    reserve(length() + size + 1);
-    while(size--) concat((char)*buffer++);
-  }
-  virtual int availableForWrite() { return 100; } // Whatever??
-};
-
-/***************************************************************
- * Format a temperature in 10ths of degrees to a nice string.
- ***************************************************************/
-void ConcatTemp(int temp, String& str)
-{
-  if ( temp != INVALID_TEMP )
-  {
-    str.concat(temp / 10);
-    str.concat(".");
-    str.concat(temp % 10);
-  } 
-  else
-  {
-    str.concat("--.-");
-  }
-}
-
-/***************************************************************
  * Check if the control values are valid
  ***************************************************************/
 boolean ControlValuesAreValid()
@@ -255,21 +216,20 @@ boolean ControlValuesAreValid()
  ***************************************************************/
 void loop()
 {
-  bool controlValuesChanged = false;    // We only want to calculate the logic when input values changed (a bit over-the-top...)
-  bool sendToPump = false;              // Do we need to update the pump controller?
-
   //////////////////////////////////////////////////////////////
   // OTA
   //////////////////////////////////////////////////////////////
   ArduinoOTA.handle();
   if ( doingota ) return;
 
-  timestamp = millis(); // Freeze the time
+  bool controlValuesChanged = false;    // We only want to calculate the logic when input values changed (a bit over-the-top...)
+  bool sendToPump = false;              // Do we need to update the pump controller?
+  auto timestamp = millis(); // Freeze the time
 
   //////////////////////////////////////////////////////////////
   // Try to stay connected to the WiFi.
   //////////////////////////////////////////////////////////////
-  if (WiFi.status() != WL_CONNECTED && wifiStatus != '#' && timestamp - lastWiFiTry > WIFI_TRY_INTERVAL)
+  if (WiFi.status() != WL_CONNECTED && ctrl.wifiStatus != '#' && timestamp - lastWiFiTry > WIFI_TRY_INTERVAL)
   { 
     lastWiFiTry = timestamp;
     WiFi.disconnect() ;
@@ -316,14 +276,12 @@ void loop()
     if ( ctrl.waterTemperature != communicator.m_temperature )
     {
       controlValuesChanged = true;
-      screen.TriggerUpdate();
       if ( communicator.m_temperature > 0 ) ctrl.waterTemperature = communicator.m_temperature;
       else                                  ctrl.waterTemperature = INVALID_TEMP;
     }
     if ( ctrl.isPumpForced != communicator.m_pumpForcedOn )
     {
       ctrl.isPumpForced = communicator.m_pumpForcedOn;
-      screen.TriggerUpdate();
       if ( ctrl.isPumpForced )
       {
         ctrl.lastforcedon = timestamp;
@@ -331,12 +289,12 @@ void loop()
     }
     if ( ctrl.isPumpOn != communicator.m_pumpOn )
     {
-      screen.TriggerUpdate();
       ctrl.isPumpOn = communicator.m_pumpOn;
       sendToPump = true;  // It's not what we expected, so we might have to update the pump controller.
     }
     DEBUGONLY(LogTime());
     DEBUGONLY(Serial.println("Received update from pump controller"));
+    screen.TriggerUpdate();
   }
   
   if ( ctrl.pumpCommunicationOK && timestamp - ctrl.LastValidPumpTimestamp > PUMP_VALIDITY )
@@ -345,9 +303,10 @@ void loop()
     DEBUGONLY(Serial.print("Invalidated pump communication "));
     DEBUGONLY(Serial.print(timestamp));
     DEBUGONLY(Serial.print(" "));
-    DEBUGONLY(Serial.println(LastValidPumpTimestamp));
+    DEBUGONLY(Serial.println(ctrl.LastValidPumpTimestamp));
     ctrl.pumpCommunicationOK = false;
     ctrl.waterTemperature = INVALID_TEMP;
+    screen.TriggerUpdate();
   }
 
   timestamp = millis(); // Freeze the time again, communication might have been lengthy
@@ -375,7 +334,7 @@ void loop()
         controlValuesChanged = true;
         DEBUGONLY(LogTime());
         DEBUGONLY(Serial.print("Inside temp changed to "));
-        DEBUGONLY(Serial.println(insideTemperature));
+        DEBUGONLY(Serial.println(ctrl.insideTemperature));
       }
     }
   }
@@ -383,7 +342,7 @@ void loop()
   {
     if ( timestamp - ctrl.insideTimestamp > MEASURE_INTERVAL )
     {
-      insidetemp.requestTemperatures(); // takes about 3/4s
+      insidetemp.requestTemperatures();
       ctrl.insideRequested = true;
       ctrl.insideTimestamp = timestamp;
       DEBUGONLY(LogTime());
@@ -408,7 +367,7 @@ void loop()
       {
         ctrl.pumpNeedsOn = false;
         screen.TriggerUpdate();
-        ctrl.sendToPump = true;
+        sendToPump = true;
       }
     }
     else
@@ -439,166 +398,10 @@ void loop()
     ctrl.pumpSendTimestamp = timestamp;
   }
 
-/***************************************************************
- * Display modes:
- * 00: Show temperatures
- * 01: Show info screen 1
- * 02: Show info screen 2
- * 10: Modify inside temperature setpoint (in 10th C)
- * 11: Modify inside temperature duration (in hours)
- ***************************************************************/
-
-  //////////////////////////////////////////////////////////////
-  // Button control, still needs some de-bouncing
-  //////////////////////////////////////////////////////////////
-  // Bottom button (white) = display mode
-  if ( (digitalRead(BUTTON1_PIN) == LOW) != Button1Down )
-  {
-    if ( (Button1Down = !Button1Down) )
-    {
-      if      ( displaymode < 10 && ++displaymode > 2 ) displaymode = 0;
-      if      ( displaymode == 10 ) 
-      { 
-        if ( insideSetpointDuration == 0 )
-        insideSetpointStart = timestamp; insideTemperatureSetpoint--; }
-      else if ( displaymode == 11 ) { insideSetpointStart = timestamp; insideSetpointDuration -= min(insideSetpointDuration, 3600000); }
-    }
-    displayChanged = true;
-  }
-  // Top button (red) = settings mode
-  if ( (digitalRead(BUTTON2_PIN) == LOW) != Button2Down )
-  {
-    if ( (Button1Down = !Button1Down) )
-    {
-      buttonStartTime = timestamp;
-      if ( displaymode < 10 ) displaymode = 10;
-    }
-    else
-    {
-      bool longpress = timestamp - buttonStartTime > 1000;
-      if      ( displaymode == 10 && longpress ) displaymode = 11;
-      else if ( displaymode == 11 && longpress ) displaymode = 0;
-      else if ( displaymode == 10 ) { insideSetpointStart = timestamp; insideTemperatureSetpoint++; }
-      else if ( displaymode == 11 ) { insideSetpointStart = timestamp; insideSetpointDuration += 3600000; }
-    }
-    displayChanged = true;
-  }
-  // Reset display after 10 seconds of no button changes
-  if ( displaymode != 0 && timestamp - buttonStartTime > 10000 )
-  {
-    displaymode = 0;
-    displayChanged = true;
-  }
-
-  if ( displaymode == 1 && (timestamp - displayupdated) > 1000 ) displayChanged = true;
-
   //////////////////////////////////////////////////////////////
   // Update the display for the user.
   //////////////////////////////////////////////////////////////
-  if ( displayChanged )
-  {
-    const word colonposition = 65;
-    const word lineheight = 15;
-    word line = 0;
-    String str;
-    displayupdated = timestamp;
-    display.clear();
-    if ( displaymode == 0 )
-    {
-      display.setTextAlignment(TEXT_ALIGN_LEFT);
-      //display.setFont(Open_Sans_Condensed_Bold_40);
-      display.setFont(Open_Sans_Condensed_Bold_30);
-      //display.setFont(ArialMT_Plain_24);
-      ConcatTemp(insideTemperature, str);
-      display.drawString(0, 0, str);
-      display.setTextAlignment(TEXT_ALIGN_RIGHT);
-      str = "";
-      ConcatTemp(outsideTemperature, str);
-      display.drawString(128, 0, str);
-      display.setTextAlignment(TEXT_ALIGN_LEFT);
-      display.setFont(ArialMT_Plain_16);
-      if ( waterTemperature != INVALID_TEMP )
-      {
-        str = "CV: ";
-        str.concat(waterTemperature / 10);
-      }
-      else
-      {
-        str = "CV: --";
-      }
-      display.drawString(0, 46, str);
-      str = wifiStatus;
-      display.drawString(60, 46, str);
-      display.setTextAlignment(TEXT_ALIGN_RIGHT);
-      if ( pumpCommunicationOK )
-      {
-        str = "P ";
-        if ( isPumpForced )
-        {
-          str.concat("AAN");
-        }
-        else
-        {
-          str.concat(isPumpOn ? "aan" : "uit");
-          if ( pumpNeedsOn != isPumpOn ) str.concat("!");
-        }
-      }
-      else
-      {
-        str = "p-fout";
-      }
-      display.drawString(128, 46, str);
-    }
-    else if ( displaymode == 1 )
-    {
-      display.setTextAlignment(TEXT_ALIGN_LEFT);
-      display.setFont(ArialMT_Plain_16);
-      
-      display.drawString(0, line, "buiten");
-      str = SColon;
-      str.concat( (timestamp - outsideTimestamp) / 1000 );
-      display.drawString(colonposition, line, str);
-      
-      display.drawString(0, line += lineheight, "binnen");
-      str = SColon;
-      str.concat( (timestamp - insideTimestamp) / 1000 );
-      display.drawString(colonposition, line, str);
-      
-      display.drawString(0, line += lineheight, "p-comm");
-      str = SColon;
-      str.concat( (timestamp - LastValidPumpTimestamp) / 1000 );
-      display.drawString(colonposition, line, str);
-      
-      display.drawString(0, line += lineheight, "periodiek");
-      str = SColon;
-      if ( (timestamp - lastforcedon) > (24 * 3600 * 1000) ) str.concat("> dag");
-      else str.concat( (timestamp - lastforcedon) / 1000 );
-      display.drawString(colonposition, line, str);
-    }
-    else if ( displaymode == 2 )
-    {
-      display.drawString(0, line, "water");
-      str = SColon;
-      ConcatTemp(waterTemperature, str);
-      display.drawString(colonposition, line, str);
-
-      display.drawString(0, line += lineheight, "pomp");
-      str = SColon;
-      str.concat(!isPumpOn ? "uit" : isPumpForced ? "(p)" : "aan");
-      display.drawString(colonposition, line, str);
-
-      display.drawString(0, line += lineheight, "comm.");
-      str = SColon;
-      str.concat(pumpCommunicationOK ? "OK" : "Fout");
-      display.drawString(colonposition, line, str);
-
-      PrintString pstr;
-      pstr.print(WiFi.localIP());
-      display.drawString(0, line += lineheight, pstr);
-    }
-    display.display();
-    displayChanged = false;
-  }
+  screen.Proces();
 
   //////////////////////////////////////////////////////////////
   // Prevent a power-sucking 100% CPU loop.

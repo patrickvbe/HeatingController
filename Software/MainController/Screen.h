@@ -1,34 +1,7 @@
 #include <OLEDDisplay.h>
 #include "ControlValues.h"
 
-class DisplayMode;
-
-class Screen
-{
-  public:
-    Screen(OLEDDisplay& display, ControlValues& ctrl, byte b1pin, byte b2pin);
-    void Proces();
-    void Enter(DisplayMode& mode);
-    void TriggerUpdate() { MDoUPdate = true; }
-
-    OLEDDisplay&    MDisplay
-    ControlValues&  MCtrl;
-
-    DisplayMode00   mode00;
-    DisplayMode01   mode01;
-    DisplayMode02   mode02;
-    DisplayMode10   mode10;
-    DisplayMode11   mode11;
-
-  private:
-    DisplayMode*    MPMode;
-    unsigned long   MDownstart=0;
-    byte            B1pin;
-    byte            B2pin;
-    bool            MButton1Down = false;
-    bool            MButton2Down = false;
-    bool            MDoUpdate = true;
-};
+class Screen;
 
 class DisplayMode
 {
@@ -40,60 +13,76 @@ class DisplayMode
     virtual void B2Down() {};
     virtual void B2Up(bool longpress) {};
     virtual void Display() {};
+    virtual void TickSecond() {};
+
+    void ConcatTemp(int temp, String& str);
 
   protected:
     Screen& MScreen;
 };
 
-class DisplayMode00: public DisplayMode
+class DMMain: public DisplayMode
 {
   public:
-    DisplayMode00(Screen& screen) : DisplayMode(screen) {};
-    virtual void B1Down() {};
-    virtual void B2Down() {};
-    virtual void Display() {};
+    DMMain(Screen& screen) : DisplayMode(screen) {}
+    void B1Down() override;
+    void B2Down() override;
+    void Display() override;
 };
 
-class DisplayMode01: public DisplayMode
+class DMStatus1: public DisplayMode
 {
   public:
-    DisplayMode01(Screen& screen) : DisplayMode(screen) {};
-    virtual void B1Down() {};
-    virtual void B1Up(bool longpress) {};
-    virtual void B2Down() {};
-    virtual void B2Up(bool longpress) {};
-    virtual void Display() {};
+    DMStatus1(Screen& screen) : DisplayMode(screen) {}
+    void B2Down() override;
+    void Display() override;
+    void TickSecond() override;
 };
 
-class DisplayMode02: public DisplayMode
+class DMStatus2: public DisplayMode
 {
   public:
-    DisplayMode02(Screen& screen) : DisplayMode(screen) {};
-    virtual void B1Down() {};
-    virtual void B1Up(bool longpress) {};
-    virtual void B2Down() {};
-    virtual void B2Up(bool longpress) {};
-    virtual void Display() {};
+    DMStatus2(Screen& screen) : DisplayMode(screen) {}
+    void B2Down() override;
+    void Display() override;
 };
 
-class DisplayMode10: public DisplayMode
+class DMChangeTemp: public DisplayMode
 {
   public:
-    DisplayMode10(Screen& screen) : DisplayMode(screen) {};
-    virtual void B1Down() {};
-    virtual void B1Up(bool longpress) {};
-    virtual void B2Down() {};
-    virtual void B2Up(bool longpress) {};
-    virtual void Display() {};
+    DMChangeTemp(Screen& screen) : DisplayMode(screen) {}
 };
 
-class DisplayMode11: public DisplayMode
+class DMChangeDuration: public DisplayMode
 {
   public:
-    DisplayMode11(Screen& screen) : DisplayMode(screen) {};
-    virtual void B1Down() {};
-    virtual void B1Up(bool longpress) {};
-    virtual void B2Down() {};
-    virtual void B2Up(bool longpress) {};
-    virtual void Display() {};
+    DMChangeDuration(Screen& screen) : DisplayMode(screen) {}
+};
+
+class Screen
+{
+  public:
+    Screen(OLEDDisplay& display, ControlValues& ctrl, byte b1pin, byte b2pin);
+    void Proces();
+    void Enter(DisplayMode& mode);
+    void TriggerUpdate() { MDoUpdate = true; }
+
+    OLEDDisplay&    MDisplay;
+    ControlValues&  MCtrl;
+
+    DMMain            dmmain;
+    DMStatus1         dmstatus1;
+    DMStatus2         dmstatus2;
+    DMChangeTemp      dmchangetemp;
+    DMChangeDuration  dmchangeduration;
+
+  private:
+    DisplayMode*    MPMode;
+    unsigned long   MDownstart=0;
+    unsigned long   MLastTick=0;
+    byte            B1pin;
+    byte            B2pin;
+    bool            MButton1Down = false;
+    bool            MButton2Down = false;
+    bool            MDoUpdate = true;
 };
