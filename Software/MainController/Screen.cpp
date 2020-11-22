@@ -28,11 +28,12 @@ void Screen::Proces()
     if ( (MButton1Down = !MButton1Down) )
     {
       MDownstart = timestamp;
+      MLongDownCalled = false;
       MPMode->B1Down();
     }
     else
     {
-      MPMode->B1Up(timestamp - MDownstart > 1000);
+      MPMode->B1Up(MLongDownCalled);
     }
   }
   if ( (digitalRead(B2pin) == LOW) != MButton2Down )
@@ -40,12 +41,23 @@ void Screen::Proces()
     if ( (MButton2Down = !MButton2Down) )
     {
       MDownstart = timestamp;
+      MLongDownCalled = false;
       MPMode->B2Down();
     }
     else
     {
-      MPMode->B2Up(timestamp - MDownstart > 1000);
+      MPMode->B2Up(MLongDownCalled);
     }
+  }
+  if ( MButton1Down && !MLongDownCalled && timestamp - MDownstart > 1000 )
+  {
+    MPMode->B1LongDown();
+    MLongDownCalled = true;
+  }
+  else if ( MButton2Down && !MLongDownCalled && timestamp - MDownstart > 1000 )
+  {
+    MPMode->B2LongDown();
+    MLongDownCalled = true;
   }
   // Reset display after 10 seconds of no button changes
   if ( MPMode != &dmmain && timestamp - MDownstart > 10000 )
@@ -63,10 +75,7 @@ void Screen::Proces()
   // Update the screen, if needed.
   if ( MDoUpdate )
   {
-    MDisplay.clear();
-    MPMode->Display();
-    MDisplay.display();
-    MDoUpdate = false;
+    Display();
   }
 }
 
@@ -74,7 +83,15 @@ void Screen::Enter(DisplayMode& mode)
 {
   MPMode = &mode;
   MPMode->Enter();
+  Display();
+}
+
+void Screen::Display()
+{
+  MDisplay.clear();
   MPMode->Display();
+  MDisplay.display();
+  MDoUpdate = false;
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -99,6 +116,25 @@ void DisplayMode::ConcatTemp(int temp, String& str)
   {
     str.concat("--.-");
   }
+} 
+
+void DisplayMode::ConcatTime(unsigned long time, String& str)
+{
+  time /= 1000;
+  unsigned long hours = time / 3600;
+  unsigned long minutes = time % 3600;
+  unsigned long seconds = minutes % 60;
+  minutes /= 60;
+  if ( hours > 0 )
+  {
+    str.concat(hours);
+    str.concat(':');
+    if ( minutes < 10 ) str.concat('0');
+  }
+  str.concat(minutes);
+  str.concat(':');
+  if ( seconds < 10 ) str.concat('0');
+  str.concat(seconds);
 } 
 
 /////////////////////////////////////////////////////////////////////
@@ -176,23 +212,23 @@ void DMStatus1::Display()
   
   display.drawString(0, line, "buiten");
   str = SColon;
-  str.concat( (timestamp - ctrl.outsideTimestamp) / 1000 );
+  ConcatTime(timestamp - ctrl.outsideTimestamp, str);
   display.drawString(colonposition, line, str);
   
   display.drawString(0, line += lineheight, "binnen");
   str = SColon;
-  str.concat( (timestamp - ctrl.insideTimestamp) / 1000 );
+  ConcatTime(timestamp - ctrl.insideTimestamp, str);
   display.drawString(colonposition, line, str);
   
   display.drawString(0, line += lineheight, "p-comm");
   str = SColon;
-  str.concat( (timestamp - ctrl.LastValidPumpTimestamp) / 1000 );
+  ConcatTime(timestamp - ctrl.LastValidPumpTimestamp, str);
   display.drawString(colonposition, line, str);
   
   display.drawString(0, line += lineheight, "periodiek");
   str = SColon;
   if ( (timestamp - ctrl.lastforcedon) > (24 * 3600 * 1000) ) str.concat("> dag");
-  else str.concat( (timestamp - ctrl.lastforcedon) / 1000 );
+  else ConcatTime(timestamp - ctrl.lastforcedon, str);
   display.drawString(colonposition, line, str);
 }
 
@@ -238,3 +274,103 @@ void DMStatus2::Display()
 }
 
 /////////////////////////////////////////////////////////////////////
+
+void DMChangeTD::Display()
+{
+  auto& display = MScreen.MDisplay;
+  auto& ctrl    = MScreen.MCtrl;
+  String str;
+
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.setFont(Open_Sans_Condensed_Bold_30);
+  ConcatTemp(ctrl.insideTemperatureSetpoint, str);
+  display.drawString(0, 0, str);
+  display.setTextAlignment(TEXT_ALIGN_RIGHT);
+  str = "";
+  ConcatTime( ctrl.insideSetpointDuration / 60000, str);
+  display.drawString(128, 0, str);
+}
+
+void DMChangeTD::TickSecond()
+{
+  MScreen.TriggerUpdate();
+}
+
+/////////////////////////////////////////////////////////////////////
+
+void DMChangeTemp::B1LongDown()
+{
+  MScreen.Enter(MScreen.dmchangeduration);
+}
+
+void DMChangeTemp::B1Up(bool longpress)
+{
+  if ( MJustEntered )
+  {
+    MJustEntered = false;
+  }
+  else
+  {
+    MScreen.MCtrl.insideTemperatureSetpoint += 5;
+    ResetTime();
+  }  
+}
+
+void DMChangeTemp::B2Down()
+{
+    MScreen.MCtrl.insideTemperatureSetpoint -= 5;
+    ResetTime();
+}
+
+void DMChangeTemp::ResetTime()
+{
+  if ( MScreen.MCtrl.insideSetpointDuration == 0 )
+  {
+    MScreen.MCtrl.insideSetpointDuration = 8 * 3600 * 1000;
+    MScreen.MCtrl.insideSetpointStart = millis();
+  }
+  MScreen.TriggerUpdate();
+}
+
+void DMChangeTemp::Display()
+{
+  DMChangeTD::Display();
+  MScreen.MDisplay.drawLine(0,0,64,0);
+}
+
+/////////////////////////////////////////////////////////////////////
+
+void DMChangeDuration::B1LongDown()
+{
+  MScreen.Enter(MScreen.dmmain);
+}
+
+void DMChangeDuration::B1Up(bool longpress)
+{
+  if ( MJustEntered )
+  {
+    MJustEntered = false;
+  }
+  else
+  {
+    MScreen.MCtrl.insideSetpointDuration += 3600000;
+    MScreen.TriggerUpdate();
+  }  
+}
+
+void DMChangeDuration::B2LongDown()
+{
+  MScreen.Enter(MScreen.dmchangetemp);
+}
+
+void DMChangeDuration::B2Up(bool longpress)
+{
+  MScreen.MCtrl.insideSetpointDuration -= 3600000;
+  MScreen.TriggerUpdate();
+}
+
+void DMChangeDuration::Display()
+{
+  DMChangeTD::Display();
+  MScreen.MDisplay.drawLine(64,0,128,0);
+}

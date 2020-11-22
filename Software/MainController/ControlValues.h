@@ -14,7 +14,7 @@ class ControlValues
 {
   public:
 
-    unsigned long LastValidPumpTimestamp = INVALID_TIME;        // The last time we received valid information from the pump unit.
+    unsigned long LastValidPumpTimestamp = 0;                   // The last time we received valid information from the pump unit.
     unsigned long pumpSendTimestamp = INVALID_TIME;             // Timestamp of last information send to the pump unit.
     int           waterTemperature  = INVALID_TEMP;             // CV water temperature received from the pump unit.
     bool          isPumpOn = false;                             // Pump status received from the pump unit.

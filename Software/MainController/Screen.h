@@ -7,15 +7,18 @@ class DisplayMode
 {
   public:
     DisplayMode(Screen&);
-    virtual void Enter() {};
-    virtual void B1Down() {};
-    virtual void B1Up(bool longpress) {};
-    virtual void B2Down() {};
-    virtual void B2Up(bool longpress) {};
-    virtual void Display() {};
-    virtual void TickSecond() {};
+    virtual void Enter() {}
+    virtual void B1Down() {}
+    virtual void B1LongDown() {}
+    virtual void B1Up(bool longdown) {}
+    virtual void B2Down() {}
+    virtual void B2LongDown() {}
+    virtual void B2Up(bool longdown) {}
+    virtual void Display() {}
+    virtual void TickSecond() {}
 
     void ConcatTemp(int temp, String& str);
+    void ConcatTime(unsigned long, String& str);
 
   protected:
     Screen& MScreen;
@@ -47,16 +50,38 @@ class DMStatus2: public DisplayMode
     void Display() override;
 };
 
-class DMChangeTemp: public DisplayMode
+class DMChangeTD: public DisplayMode
 {
   public:
-    DMChangeTemp(Screen& screen) : DisplayMode(screen) {}
+    DMChangeTD(Screen& screen) : DisplayMode(screen) {}
+    void Enter() { MJustEntered = true; }
+    void Display() override;
+    void TickSecond() override;
+  protected:
+    bool MJustEntered = true;
 };
 
-class DMChangeDuration: public DisplayMode
+class DMChangeTemp: public DMChangeTD
 {
   public:
-    DMChangeDuration(Screen& screen) : DisplayMode(screen) {}
+    DMChangeTemp(Screen& screen) : DMChangeTD(screen) {}
+    void B1LongDown() override;
+    void B1Up(bool longpress) override;
+    void B2Down() override;
+    void Display() override;
+  protected:
+    void ResetTime();
+};
+
+class DMChangeDuration: public DMChangeTD
+{
+  public:
+    DMChangeDuration(Screen& screen) : DMChangeTD(screen) {}
+    void B1LongDown() override;
+    void B1Up(bool longpress) override;
+    void B2LongDown() override;
+    void B2Up(bool longpress) override;
+    void Display() override;
 };
 
 class Screen
@@ -77,6 +102,8 @@ class Screen
     DMChangeDuration  dmchangeduration;
 
   private:
+    void Display();
+
     DisplayMode*    MPMode;
     unsigned long   MDownstart=0;
     unsigned long   MLastTick=0;
@@ -84,5 +111,6 @@ class Screen
     byte            B2pin;
     bool            MButton1Down = false;
     bool            MButton2Down = false;
+    bool            MLongDownCalled = false;
     bool            MDoUpdate = true;
 };
