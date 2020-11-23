@@ -70,6 +70,7 @@ bool doingota = false;
 // Dynamic control values
 #include "ControlValues.h"
 ControlValues ctrl;
+static unsigned long lastloopmillis;
 
 // WiFi
 WiFiEventHandler mConnectHandler, mDisConnectHandler, mGotIpHandler;
@@ -184,6 +185,7 @@ void setup()
   insidetemp.begin();
   insidetemp.setResolution(12);
   insidetemp.setWaitForConversion(false);
+  lastloopmillis = millis();
 }
 
 /***************************************************************
@@ -353,10 +355,15 @@ void loop()
   //////////////////////////////////////////////////////////////
   // The actual controlling actions.
   //////////////////////////////////////////////////////////////
-  if ( ctrl.insideSetpointDuration != 0 && timestamp - ctrl.insideSetpointStart > ctrl.insideSetpointDuration )
+
+  if ( ctrl.insideSetpointDuration > 0 )
   {
-    ctrl.insideSetpointDuration = 0;
-    ctrl.insideTemperatureSetpoint = DEFAULT_INSIDE_TEMP_SETPOINT;
+    ctrl.insideSetpointDuration -= min(ctrl.insideSetpointDuration, timestamp - lastloopmillis);
+    if ( ctrl.insideSetpointDuration == 0 )
+    {
+      ctrl.insideTemperatureSetpoint = DEFAULT_INSIDE_TEMP_SETPOINT;
+      controlValuesChanged = true;
+    }
   }
 
   if ( controlValuesChanged && ControlValuesAreValid() )
@@ -407,4 +414,5 @@ void loop()
   // Prevent a power-sucking 100% CPU loop.
   //////////////////////////////////////////////////////////////
   delay(20);
+  lastloopmillis = timestamp;
 }

@@ -27,7 +27,6 @@ class ControlValues
     int           insideTemperatureSetpoint = DEFAULT_INSIDE_TEMP_SETPOINT; // Room temperature setpoint to turn the pump on / off. Might be configurable in the future.
     int           displaymode = 0;                              // What to show on the screen
     unsigned long insideSetpointDuration = 0;                   // The validity of the modified inside setpoint. 0 = don't change back.
-    unsigned long insideSetpointStart=0;                        // When did the inside setpoint changed?
     unsigned long outsideTimestamp  = 0;                        // Timestamp of the last valid outside temperature received.
     unsigned long insideTimestamp = INVALID_TIME;               // Timestamp the inside temperature was last measured.
     unsigned long lastforcedon=0;

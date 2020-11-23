@@ -287,7 +287,7 @@ void DMChangeTD::Display()
   display.drawString(0, 0, str);
   display.setTextAlignment(TEXT_ALIGN_RIGHT);
   str = "";
-  ConcatTime( ctrl.insideSetpointDuration / 60000, str);
+  ConcatTime( (ctrl.insideSetpointDuration + 59999) / 60, str);
   display.drawString(128, 0, str);
 }
 
@@ -327,7 +327,6 @@ void DMChangeTemp::ResetTime()
   if ( MScreen.MCtrl.insideSetpointDuration == 0 )
   {
     MScreen.MCtrl.insideSetpointDuration = 8 * 3600 * 1000;
-    MScreen.MCtrl.insideSetpointStart = millis();
   }
   MScreen.TriggerUpdate();
 }
@@ -353,19 +352,19 @@ void DMChangeDuration::B1Up(bool longpress)
   }
   else
   {
-    MScreen.MCtrl.insideSetpointDuration += 3600000;
+    MScreen.MCtrl.insideSetpointDuration += 1800000;
     MScreen.TriggerUpdate();
   }  
 }
 
 void DMChangeDuration::B2LongDown()
 {
-  MScreen.Enter(MScreen.dmchangetemp);
+  MScreen.MCtrl.insideSetpointDuration = 0; // = never change back.
 }
 
 void DMChangeDuration::B2Up(bool longpress)
 {
-  MScreen.MCtrl.insideSetpointDuration -= 3600000;
+  MScreen.MCtrl.insideSetpointDuration -= min(MScreen.MCtrl.insideSetpointDuration, 1800000UL);
   MScreen.TriggerUpdate();
 }
 
