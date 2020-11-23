@@ -16,7 +16,7 @@ bool doingota = false;
 #include "src/RF433/RF433.h"
 #include "src/InterUnitCommunication/InterUnitCommunication.h"
 
-#define DEBUG;
+//#define DEBUG;
 #ifdef DEBUG
   #define DEBUGONLY(statement) statement;
 #else
@@ -43,8 +43,8 @@ bool doingota = false;
 #define DS18B20_PIN  13
 #define DS18B20_DELAY 1000
 // Buttons
-#define BUTTON1_PIN 2
-#define BUTTON2_PIN 0
+#define BUTTON1_PIN 0
+#define BUTTON2_PIN 2
 // Display
 #define DISPLAY_ADDRESS 0x3C
 #define SDA_PIN 12

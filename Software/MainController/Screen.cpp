@@ -104,17 +104,21 @@ DisplayMode::DisplayMode(Screen& screen)
 /***************************************************************
  * Format a temperature in 10ths of degrees to a nice string.
  ***************************************************************/
-void DisplayMode::ConcatTemp(int temp, String& str)
+void DisplayMode::ConcatTemp(int temp, String& str, bool usedecimals)
 {
   if ( temp != INVALID_TEMP )
   {
     str.concat(temp / 10);
-    str.concat(".");
-    str.concat(temp % 10);
+    if ( usedecimals )
+    {
+      str.concat(".");
+      str.concat(temp % 10);
+    }
   } 
   else
   {
-    str.concat("--.-");
+    if ( usedecimals ) str.concat("--.-");
+    else str.concat("--");
   }
 } 
 
@@ -165,7 +169,7 @@ void DMMain::Display()
   display.setTextAlignment(TEXT_ALIGN_LEFT);
   display.setFont(ArialMT_Plain_16);
   str = "CV: ";
-  ConcatTemp(ctrl.waterTemperature, str);
+  ConcatTemp(ctrl.waterTemperature, str, false);
   display.drawString(0, 46, str);
   str = ctrl.wifiStatus;
   display.drawString(60, 46, str);

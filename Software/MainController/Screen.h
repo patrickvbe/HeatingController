@@ -17,7 +17,7 @@ class DisplayMode
     virtual void Display() {}
     virtual void TickSecond() {}
 
-    void ConcatTemp(int temp, String& str);
+    void ConcatTemp(int temp, String& str, bool usedecimals = true);
     void ConcatTime(unsigned long, String& str);
 
   protected:
