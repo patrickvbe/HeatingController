@@ -330,7 +330,7 @@ void DMChangeTemp::ResetTime()
 {
   if ( MScreen.MCtrl.insideSetpointDuration == 0 )
   {
-    MScreen.MCtrl.insideSetpointDuration = 8 * 3600 * 1000;
+    MScreen.MCtrl.insideSetpointDuration = 10 * 3600 * 1000;
   }
   MScreen.TriggerUpdate();
 }

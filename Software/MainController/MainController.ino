@@ -353,6 +353,12 @@ void loop()
   }
 
   //////////////////////////////////////////////////////////////
+  // Update the display for the user.
+  //////////////////////////////////////////////////////////////
+  auto oldsetpoint = ctrl.insideTemperatureSetpoint;
+  screen.Proces();
+
+  //////////////////////////////////////////////////////////////
   // The actual controlling actions.
   //////////////////////////////////////////////////////////////
 
@@ -362,15 +368,17 @@ void loop()
     if ( ctrl.insideSetpointDuration == 0 )
     {
       ctrl.insideTemperatureSetpoint = DEFAULT_INSIDE_TEMP_SETPOINT;
-      controlValuesChanged = true;
     }
   }
+
+  // Either by UI actions or the time-out above.
+  controlValuesChanged |= oldsetpoint != ctrl.insideTemperatureSetpoint;
 
   if ( controlValuesChanged && ControlValuesAreValid() )
   {
     if ( ctrl.pumpNeedsOn )
     {
-      if ( ctrl.insideTemperature >= ctrl.insideTemperatureSetpoint + 5 || ctrl.waterTemperature <= ctrl.waterTemperatureSetpoint )
+      if ( ctrl.insideTemperature > ctrl.insideTemperatureSetpoint + 1 || ctrl.waterTemperature <= ctrl.waterTemperatureSetpoint )
       {
         ctrl.pumpNeedsOn = false;
         screen.TriggerUpdate();
@@ -379,7 +387,7 @@ void loop()
     }
     else
     {
-      if ( ctrl.insideTemperature <= ctrl.insideTemperatureSetpoint && ctrl.waterTemperature >= ctrl.waterTemperatureSetpoint + 10 )
+      if ( ctrl.insideTemperature <= ctrl.insideTemperatureSetpoint - 1 && ctrl.waterTemperature >= ctrl.waterTemperatureSetpoint + 10 )
       {
         ctrl.pumpNeedsOn = true;
         screen.TriggerUpdate();
@@ -404,11 +412,6 @@ void loop()
     DEBUGONLY(Serial.println(F("Send update to pump.")));
     ctrl.pumpSendTimestamp = timestamp;
   }
-
-  //////////////////////////////////////////////////////////////
-  // Update the display for the user.
-  //////////////////////////////////////////////////////////////
-  screen.Proces();
 
   //////////////////////////////////////////////////////////////
   // Prevent a power-sucking 100% CPU loop.
