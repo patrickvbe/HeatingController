@@ -13,7 +13,43 @@ const int PUMP_CONTROLLER = 4;
 const unsigned long DURATIONTHRESHOLD1 = 275;
 const unsigned long DURATIONTHRESHOLD2 = 225;
 const unsigned long SYNCPULSETHRESHOLD = 3000;
-const int MAXRECORD = 80;
+const int BUFFER_SIZE = 1000;
+
+template<class T, T OVERFLOW_VALUE>
+class overflowcounter final
+{
+  public:
+    overflowcounter() : counter(0) {}
+    overflowcounter(T value) : counter(value) {}
+    operator T() { return counter; }
+    overflowcounter operator=(T that) { return counter = that; }
+    overflowcounter operator++(T)
+    { 
+      T retvalue = counter;
+      (*this)+=1;
+      return retvalue;
+    }
+    overflowcounter operator-(T that) const
+    { 
+      return counter >= that ? counter - that : counter + OVERFLOW_VALUE - that;
+    }
+    overflowcounter operator-=(T that)
+    { 
+      return counter = (*this) - that;
+    }
+    overflowcounter operator+(T that) const
+    { 
+      T result = counter + that;
+      return result >= OVERFLOW_VALUE ? result - OVERFLOW_VALUE : result;
+    }
+    overflowcounter operator+=(T that)
+    { 
+      return counter = (*this) + that;
+    }
+
+  private:
+    T counter = 0;
+};
 
 class sender
 {
@@ -52,11 +88,13 @@ private:
   void read_interrupt();
   bool decode(int& protocol, unsigned long& code);
   bool decodeprotocol(const int protocol_id, unsigned long& code);
+  void initvalues();
 
 // Data members
-  volatile int            counter;
-  volatile unsigned long  data[MAXRECORD];
-  volatile unsigned long  last_timestamp;
-  volatile boolean        code_waiting;
+  overflowcounter<int, BUFFER_SIZE> startpos; // Should be shifted up by the processor
+  overflowcounter<int, BUFFER_SIZE> nextpos;
+  int            counter;
+  unsigned long  data[BUFFER_SIZE];
+  unsigned long  last_timestamp;
   static receiver* me;  // No arguments allowed for the interrupt, so: it's me!
 };

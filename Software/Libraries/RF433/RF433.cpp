@@ -15,13 +15,14 @@ struct Protocol
 };
 
 static const Protocol PROTOCOLS[] = {
-    //Protocol{132, 130, 300, 2500, 300,  300,  300, 1200, 300, 10000},     // Smartwares (Action)
+  //Protocol{132, 130, 300, 2500, 300,  300,  300, 1200, 300, 10000},     // Smartwares (Action)
     Protocol{130, 128, 0, 0, 300,  300,  300, 1200, 300, 10000},    // Smartwares (Action)
     Protocol{ 74,  70, 0, 0, 500,  950,  500, 1950, 550,  3850},    // Weatherstation
     Protocol{ 66,  64, 0, 0, 600, 1200, 1200,  600, 600,  7000},    // Conrad RSL
     Protocol{ 50,  48, 0, 0, 350, 1000, 1000,  350, 350, 10100},    // Elro
     Protocol{ 50,  48, 0, 0, 500,  500,  500, 1000, 500, 10000}     // PUMP_CONTROLLER, my own :-)
 };
+const int MAX_SIGNAL_LENGTH = 140;
 
 sender::sender(const int sndpin)
 {
@@ -67,11 +68,18 @@ void sender::send(const int protocol_id, const unsigned long code, int repeat)
 
 receiver* receiver::me = 0;
 
+void receiver::initvalues()
+{
+  counter = 0;
+  startpos = 0;
+  nextpos = 1;
+  data[startpos] = 0;
+  last_timestamp = micros();
+}
+
 receiver::receiver(const int recpin)
 {
-  code_waiting = false;
-  last_timestamp = micros();
-  counter = 0;
+  initvalues();
   pin = recpin;
   pinMode(pin, INPUT);
   receiver::me = this;
@@ -79,24 +87,24 @@ receiver::receiver(const int recpin)
 
 boolean receiver::receive(int& protocol, unsigned long& code)
 {
-  if ( code_waiting )
+  boolean result = false;
+  if ( !result && data[startpos] != 0 )
   {
     /* Debug code to analyse new signals.
-    Serial.print(counter);
+    auto pos = startpos;
+    int size = (int)data[pos++];
+    Serial.print(size);
     Serial.print(": ");
-    for (int idx=0; idx < counter; idx++)
+    for (int idx=0; idx < size; idx++)
     {
-      Serial.print(data[idx]);
+      Serial.print(data[pos++]);
       Serial.print(", ");
     }
     Serial.println();
     //*/
-    boolean result = decode(protocol, code);
-    counter = 0;
-    code_waiting = false;
-    return result;
+    result = decode(protocol, code);
   }
-  return false;
+  return result;
 }
 
 // weatherstation format: 1111111 000000010100101 111110011011, middle part is temperature in 10ths C
@@ -109,8 +117,7 @@ int receiver::convertCodeToTemp(const unsigned long code)
 
 void receiver::start()
 {
-  last_timestamp = micros();
-  counter = 0;
+  initvalues();
   attachInterrupt(digitalPinToInterrupt(pin), sread_interrupt, CHANGE);
 }
 
@@ -121,7 +128,7 @@ void receiver::stop()
 
 ICACHE_RAM_ATTR void receiver::sread_interrupt()
 {
-  if ( !me->code_waiting )
+  if ( (me->startpos - me->nextpos) >= 2 )  // Enough room for at least 2 values.
   {
     receiver::me->read_interrupt();
   }
@@ -129,32 +136,36 @@ ICACHE_RAM_ATTR void receiver::sread_interrupt()
 
 bool receiver::decode(int& protocol, unsigned long& code)
 {
-  for (int idx = 0; idx < (sizeof(PROTOCOLS) / sizeof(Protocol)); idx++)
+  bool result = false;
+  for (int idx = 0; !result && idx < (sizeof(PROTOCOLS) / sizeof(Protocol)); idx++)
   {
     if (decodeprotocol(idx, code))
     {
       protocol = idx;
-      return true;
+      result = true;
     }
   }
-  return false;
+  startpos += (int)data[startpos] + 1;
+  return result;
 }
 
 bool receiver::decodeprotocol(const int protocol_id, unsigned long& result_code)
 {
   const Protocol& protocol = PROTOCOLS[protocol_id];
-  if (counter < protocol.signallength)
+  auto pos(startpos);
+  const int size = (int)data[pos++];
+  if (size < protocol.signallength)
     return false;
-  int start = counter - protocol.signallength;
+  pos += size - protocol.signallength;
   if (protocol.start_low != 0)
   {
-    if (data[start + 1] < (protocol.start_low * 2) / 3)
+    if (data[pos + 1] < (protocol.start_low * 2) / 3)
     {
       return false;
     }
-    start += 2;
+    pos += 2;
   }
-  if (protocol.end_low < (data[counter - 1] * 2) / 3)
+  if (protocol.end_low < (data[pos +  (protocol.signallength - 1)] * 2) / 3)
   {
     return false;
   }
@@ -168,11 +179,10 @@ bool receiver::decodeprotocol(const int protocol_id, unsigned long& result_code)
   unsigned long onell = (protocol.one_low / 3) * 2;
   unsigned long onelh = onell * 2;
   unsigned long code = 0;
-  int end = start + protocol.relevantlength;
-  for (int pos = start; pos < end; pos += 2)
+  for (int idx = 0; idx < protocol.relevantlength; idx += 2)
   {
-    unsigned long high = data[pos];
-    unsigned long low = data[pos + 1];
+    unsigned long high = data[pos++];
+    unsigned long low = data[pos++];
     if (zerohl < high && high < zerohh && zeroll < low && low < zerolh)
     {
       code <<= 1;
@@ -204,15 +214,26 @@ ICACHE_RAM_ATTR void receiver::read_interrupt()
   // Pulses shorter than 250us are usually noise. But my smartwares remote drifts to almost 225us...
   if (duration > DURATIONTHRESHOLD1 || (duration > DURATIONTHRESHOLD2 && counter > 0))
   {
-    data[counter++] = duration;
-    if (duration > SYNCPULSETHRESHOLD || counter == MAXRECORD)
+    counter++;
+    data[nextpos++] = duration;
+    if (duration > SYNCPULSETHRESHOLD || counter == MAX_SIGNAL_LENGTH)
     {
-      if (counter > 10) code_waiting = true;
-      else counter = 0;
+      if (counter > 10)
+      {
+        data[nextpos - (counter + 1)] =  counter;
+        data[nextpos++] = 0;
+      }
+      else
+      {
+        nextpos -= counter;
+      }
+      
+      counter = 0;
     }
   }
   else
   {
+    nextpos -= counter;
     counter = 0;
   }
 }
