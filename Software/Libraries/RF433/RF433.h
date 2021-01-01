@@ -13,43 +13,12 @@ const int PUMP_CONTROLLER = 4;
 const unsigned long DURATIONTHRESHOLD1 = 275;
 const unsigned long DURATIONTHRESHOLD2 = 225;
 const unsigned long SYNCPULSETHRESHOLD = 3000;
-const int BUFFER_SIZE = 1000;
 
-template<class T, T OVERFLOW_VALUE>
-class overflowcounter final
-{
-  public:
-    overflowcounter() : counter(0) {}
-    overflowcounter(T value) : counter(value) {}
-    operator T() { return counter; }
-    overflowcounter operator=(T that) { return counter = that; }
-    overflowcounter operator++(T)
-    { 
-      T retvalue = counter;
-      (*this)+=1;
-      return retvalue;
-    }
-    overflowcounter operator-(T that) const
-    { 
-      return counter >= that ? counter - that : counter + OVERFLOW_VALUE - that;
-    }
-    overflowcounter operator-=(T that)
-    { 
-      return counter = (*this) - that;
-    }
-    overflowcounter operator+(T that) const
-    { 
-      T result = counter + that;
-      return result >= OVERFLOW_VALUE ? result - OVERFLOW_VALUE : result;
-    }
-    overflowcounter operator+=(T that)
-    { 
-      return counter = (*this) + that;
-    }
-
-  private:
-    T counter = 0;
-};
+// Make use of the overflow characteristics of binary to wrap circular buffer indices.
+const int BUFFER_MASK = 0x3FF; // 0x3FF = 1023
+const int BUFFER_SIZE = BUFFER_MASK + 1;
+#define COUNTER_MATH(exp) ((exp) & BUFFER_MASK)
+#define FIX_COUNTER(var) var &= BUFFER_MASK
 
 class sender
 {
@@ -85,16 +54,15 @@ public:
 private:
 // Functionality
   static void sread_interrupt();
-  void read_interrupt();
   bool decode(int& protocol, unsigned long& code);
   bool decodeprotocol(const int protocol_id, unsigned long& code);
   void initvalues();
 
 // Data members
-  overflowcounter<int, BUFFER_SIZE> startpos; // Should be shifted up by the processor
-  overflowcounter<int, BUFFER_SIZE> nextpos;
-  int            counter;
-  unsigned long  data[BUFFER_SIZE];
+  int            startpos;          // Position of first entry in the circular buffer.
+  int            nextpos;           // Next free position in the circular buffer.
+  int            counter;           // Size of the current sequence we are recording.
+  unsigned long  data[BUFFER_SIZE]; // Circular buffer
   unsigned long  last_timestamp;
   static receiver* me;  // No arguments allowed for the interrupt, so: it's me!
 };

@@ -90,18 +90,20 @@ boolean receiver::receive(int& protocol, unsigned long& code)
   boolean result = false;
   if ( !result && data[startpos] != 0 )
   {
-    /* Debug code to analyse new signals.
-    auto pos = startpos;
-    int size = (int)data[pos++];
-    Serial.print(size);
-    Serial.print(": ");
-    for (int idx=0; idx < size; idx++)
-    {
-      Serial.print(data[pos++]);
-      Serial.print(", ");
-    }
-    Serial.println();
-    //*/
+    // Debug code to analyse new signals.
+    // auto pos = startpos;
+    // int size = (int)data[pos++];
+    // FIX_COUNTER(pos);
+    // Serial.print("decode ");
+    // Serial.print(size);
+    // Serial.print(": ");
+    // for (int idx=0; idx < size; idx++)
+    // {
+    //   Serial.print(data[pos++]);
+    //   FIX_COUNTER(pos);
+    //   Serial.print(", ");
+    // }
+    // Serial.println();
     result = decode(protocol, code);
   }
   return result;
@@ -128,9 +130,40 @@ void receiver::stop()
 
 ICACHE_RAM_ATTR void receiver::sread_interrupt()
 {
-  if ( (me->startpos - me->nextpos) >= 2 )  // Enough room for at least 2 values.
+  if ( COUNTER_MATH(me->startpos - me->nextpos) >= 2 )  // Enough room for at least 2 values.
   {
-    receiver::me->read_interrupt();
+    // receiver::me->read_interrupt();
+    unsigned long timestamp = micros();
+    unsigned long duration = timestamp - me->last_timestamp;
+    me->last_timestamp = timestamp;
+    // Pulses shorter than 250us are usually noise. But my smartwares remote drifts to almost 225us...
+    if (duration > DURATIONTHRESHOLD1 || (duration > DURATIONTHRESHOLD2 && me->counter > 0))
+    {
+      me->counter++;
+      me->data[me->nextpos++] = duration;
+      FIX_COUNTER(me->nextpos);
+      if (duration > SYNCPULSETHRESHOLD || me->counter == MAX_SIGNAL_LENGTH)
+      {
+        if (me->counter > 10)
+        {
+          me->data[COUNTER_MATH(me->nextpos - (me->counter + 1))] =  me->counter;
+          me->data[me->nextpos++] = 0;
+          FIX_COUNTER(me->nextpos);
+        }
+        else
+        {
+          me->nextpos -= me->counter;
+          FIX_COUNTER(me->nextpos);
+        }
+        me->counter = 0;
+      }
+    }
+    else
+    {
+      me->nextpos -= me->counter;
+      FIX_COUNTER(me->nextpos);
+      me->counter = 0;
+    }
   }
 }
 
@@ -146,26 +179,30 @@ bool receiver::decode(int& protocol, unsigned long& code)
     }
   }
   startpos += (int)data[startpos] + 1;
+  FIX_COUNTER(startpos);
   return result;
 }
 
 bool receiver::decodeprotocol(const int protocol_id, unsigned long& result_code)
 {
   const Protocol& protocol = PROTOCOLS[protocol_id];
-  auto pos(startpos);
+  int pos(startpos);
   const int size = (int)data[pos++];
+  FIX_COUNTER(pos);
   if (size < protocol.signallength)
     return false;
   pos += size - protocol.signallength;
+  FIX_COUNTER(pos);
   if (protocol.start_low != 0)
   {
-    if (data[pos + 1] < (protocol.start_low * 2) / 3)
+    if (data[COUNTER_MATH(pos + 1)] < (protocol.start_low * 2) / 3)
     {
       return false;
     }
     pos += 2;
+    FIX_COUNTER(pos);
   }
-  if (protocol.end_low < (data[pos +  (protocol.signallength - 1)] * 2) / 3)
+  if (protocol.end_low < (data[COUNTER_MATH(pos +  (protocol.signallength - 1))] * 2) / 3)
   {
     return false;
   }
@@ -182,7 +219,9 @@ bool receiver::decodeprotocol(const int protocol_id, unsigned long& result_code)
   for (int idx = 0; idx < protocol.relevantlength; idx += 2)
   {
     unsigned long high = data[pos++];
+    FIX_COUNTER(pos);
     unsigned long low = data[pos++];
+    FIX_COUNTER(pos);
     if (zerohl < high && high < zerohh && zeroll < low && low < zerolh)
     {
       code <<= 1;
@@ -202,38 +241,8 @@ bool receiver::decodeprotocol(const int protocol_id, unsigned long& result_code)
     return false;
   }
   result_code = code;
+  // Serial.print(protocol_id);
+  // Serial.print(':');
+  // Serial.println(code, BIN);
   return true;
-}
-
-ICACHE_RAM_ATTR void receiver::read_interrupt()
-{
-  unsigned long timestamp = micros();
-  unsigned long duration = timestamp - last_timestamp;
-  last_timestamp = timestamp;
-
-  // Pulses shorter than 250us are usually noise. But my smartwares remote drifts to almost 225us...
-  if (duration > DURATIONTHRESHOLD1 || (duration > DURATIONTHRESHOLD2 && counter > 0))
-  {
-    counter++;
-    data[nextpos++] = duration;
-    if (duration > SYNCPULSETHRESHOLD || counter == MAX_SIGNAL_LENGTH)
-    {
-      if (counter > 10)
-      {
-        data[nextpos - (counter + 1)] =  counter;
-        data[nextpos++] = 0;
-      }
-      else
-      {
-        nextpos -= counter;
-      }
-      
-      counter = 0;
-    }
-  }
-  else
-  {
-    nextpos -= counter;
-    counter = 0;
-  }
 }
