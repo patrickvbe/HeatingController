@@ -1,3 +1,4 @@
+// python3 ~/.arduino15/packages/esp8266/hardware/esp8266/2.7.4/tools/espota.py -i 192.168.178.115 -p 8266 -f /tmp/arduino_build_661492/MainController.ino.bin
 // Going OTA...
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
@@ -16,7 +17,7 @@ bool doingota = false;
 #include "src/RF433/RF433.h"
 #include "src/InterUnitCommunication/InterUnitCommunication.h"
 
-//#define DEBUG;
+#define DEBUG;
 #ifdef DEBUG
   #define DEBUGONLY(statement) statement;
 #else
@@ -91,6 +92,8 @@ unsigned long lastWiFiTry = -WIFI_TRY_INTERVAL;
 #include "Screen.h"
 Screen screen(display, ctrl, BUTTON1_PIN, BUTTON2_PIN);
 
+#include "WebServer.h"
+
 //////////////////////////////////////////////////////////////
 // The objects / sensors we have
 //////////////////////////////////////////////////////////////
@@ -146,6 +149,7 @@ void setup()
     ctrl.wifiStatus = '#';
     screen.TriggerUpdate(); 
     ArduinoOTA.begin();
+    MDNS.begin("esp8266");
   });
 
   //////////////////////////////////////////////////////////////
@@ -181,6 +185,7 @@ void setup()
   //////////////////////////////////////////////////////////////
   // 
   //////////////////////////////////////////////////////////////
+  webserver.Init(ctrl);
   rcv.start();
   insidetemp.begin();
   insidetemp.setResolution(12);
@@ -223,6 +228,9 @@ void loop()
   //////////////////////////////////////////////////////////////
   ArduinoOTA.handle();
   if ( doingota ) return;
+
+  webserver.Process();
+  MDNS.update();
 
   bool controlValuesChanged = false;    // We only want to calculate the logic when input values changed (a bit over-the-top...)
   bool sendToPump = false;              // Do we need to update the pump controller?

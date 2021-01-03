@@ -101,46 +101,6 @@ DisplayMode::DisplayMode(Screen& screen)
 {
 }
 
-/***************************************************************
- * Format a temperature in 10ths of degrees to a nice string.
- ***************************************************************/
-void DisplayMode::ConcatTemp(int temp, String& str, bool usedecimals)
-{
-  if ( temp != INVALID_TEMP )
-  {
-    str.concat(temp / 10);
-    if ( usedecimals )
-    {
-      str.concat(".");
-      str.concat(temp % 10);
-    }
-  } 
-  else
-  {
-    if ( usedecimals ) str.concat("--.-");
-    else str.concat("--");
-  }
-} 
-
-void DisplayMode::ConcatTime(unsigned long time, String& str)
-{
-  time /= 1000;
-  unsigned long hours = time / 3600;
-  unsigned long minutes = time % 3600;
-  unsigned long seconds = minutes % 60;
-  minutes /= 60;
-  if ( hours > 0 )
-  {
-    str.concat(hours);
-    str.concat(':');
-    if ( minutes < 10 ) str.concat('0');
-  }
-  str.concat(minutes);
-  str.concat(':');
-  if ( seconds < 10 ) str.concat('0');
-  str.concat(seconds);
-} 
-
 /////////////////////////////////////////////////////////////////////
 void DMMain::B1Down()
 {
@@ -156,20 +116,20 @@ void DMMain::Display()
 {
   auto& display = MScreen.MDisplay;
   auto& ctrl    = MScreen.MCtrl;
-  String str;
+  PrintString str;
 
   display.setTextAlignment(TEXT_ALIGN_LEFT);
   display.setFont(Open_Sans_Condensed_Bold_30);
-  ConcatTemp(ctrl.insideTemperature, str);
+  str.ConcatTemp(ctrl.insideTemperature);
   display.drawString(0, 0, str);
   display.setTextAlignment(TEXT_ALIGN_RIGHT);
   str = "";
-  ConcatTemp(ctrl.outsideTemperature, str);
+  str.ConcatTemp(ctrl.outsideTemperature);
   display.drawString(128, 0, str);
   display.setTextAlignment(TEXT_ALIGN_LEFT);
   display.setFont(ArialMT_Plain_16);
   str = "CV: ";
-  ConcatTemp(ctrl.waterTemperature, str, false);
+  str.ConcatTemp(ctrl.waterTemperature, false);
   display.drawString(0, 46, str);
   str = ctrl.wifiStatus;
   display.drawString(60, 46, str);
@@ -208,7 +168,7 @@ void DMStatus1::Display()
   const word colonposition = 65;
   const word lineheight = 15;
   word line = 0;
-  String str;
+  PrintString str;
   auto timestamp = millis();
 
   display.setTextAlignment(TEXT_ALIGN_LEFT);
@@ -216,23 +176,23 @@ void DMStatus1::Display()
   
   display.drawString(0, line, "buiten");
   str = SColon;
-  ConcatTime(timestamp - ctrl.outsideTimestamp, str);
+  str.ConcatTime(timestamp - ctrl.outsideTimestamp);
   display.drawString(colonposition, line, str);
   
   display.drawString(0, line += lineheight, "binnen");
   str = SColon;
-  ConcatTime(timestamp - ctrl.insideTimestamp, str);
+  str.ConcatTime(timestamp - ctrl.insideTimestamp);
   display.drawString(colonposition, line, str);
   
   display.drawString(0, line += lineheight, "p-comm");
   str = SColon;
-  ConcatTime(timestamp - ctrl.LastValidPumpTimestamp, str);
+  str.ConcatTime(timestamp - ctrl.LastValidPumpTimestamp);
   display.drawString(colonposition, line, str);
   
   display.drawString(0, line += lineheight, "periodiek");
   str = SColon;
   if ( (timestamp - ctrl.lastforcedon) > (24 * 3600 * 1000) ) str.concat("> dag");
-  else ConcatTime(timestamp - ctrl.lastforcedon, str);
+  else str.ConcatTime(timestamp - ctrl.lastforcedon);
   display.drawString(colonposition, line, str);
 }
 
@@ -255,11 +215,11 @@ void DMStatus2::Display()
   const word colonposition = 65;
   const word lineheight = 15;
   word line = 0;
-  String str;
+  PrintString str;
 
   display.drawString(0, line, "water");
   str = SColon;
-  ConcatTemp(ctrl.waterTemperature, str);
+  str.ConcatTemp(ctrl.waterTemperature);
   display.drawString(colonposition, line, str);
 
   display.drawString(0, line += lineheight, "pomp");
@@ -283,15 +243,15 @@ void DMChangeTD::Display()
 {
   auto& display = MScreen.MDisplay;
   auto& ctrl    = MScreen.MCtrl;
-  String str;
+  PrintString str;
 
   display.setTextAlignment(TEXT_ALIGN_LEFT);
   display.setFont(Open_Sans_Condensed_Bold_30);
-  ConcatTemp(ctrl.insideTemperatureSetpoint, str);
+  str.ConcatTemp(ctrl.insideTemperatureSetpoint);
   display.drawString(0, 0, str);
   display.setTextAlignment(TEXT_ALIGN_RIGHT);
   str = "";
-  ConcatTime( (ctrl.insideSetpointDuration + 59999) / 60, str);
+  str.ConcatTime( (ctrl.insideSetpointDuration + 59999) / 60);
   display.drawString(128, 0, str);
 }
 
