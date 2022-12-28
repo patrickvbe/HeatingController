@@ -7,7 +7,7 @@
 #include <ESP8266WiFi.h>
 #include "PrintString.h"
 
-static char* SColon = ": ";
+static const char* SColon = ": ";
 
 Screen::Screen(OLEDDisplay& display, ControlValues& ctrl, byte b1pin, byte b2pin)
 : MDisplay(display), MCtrl(ctrl), B1pin(b1pin), B2pin(b2pin),
@@ -124,7 +124,7 @@ void DMMain::Display()
   display.drawString(0, 0, str);
   display.setTextAlignment(TEXT_ALIGN_RIGHT);
   str = "";
-  str.ConcatTemp(ctrl.outsideTemperature);
+  str.ConcatTemp(ctrl.outsideTemperatureOT);
   display.drawString(128, 0, str);
   display.setTextAlignment(TEXT_ALIGN_LEFT);
   display.setFont(ArialMT_Plain_16);

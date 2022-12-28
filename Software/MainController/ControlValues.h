@@ -5,7 +5,7 @@
 #ifndef CONTROLVALUES_H
 #define CONTROLVALUES_H
 
-#define DEFAULT_INSIDE_TEMP_SETPOINT    200
+#define DEFAULT_INSIDE_TEMP_SETPOINT    180
 #define INVALID_TEMP -1000
 #define INVALID_TIME -1000000
 
@@ -22,6 +22,7 @@ class ControlValues
     bool          pumpNeedsOn = false;                          // Our computed / wanted pump status.
     bool          pumpCommunicationOK = false;                  // Did we receive valid and on-time communication from the pump unit?
     int           outsideTemperature = INVALID_TEMP;            // New temperature received from the weather station.
+    int           outsideTemperatureOT = INVALID_TEMP;          // Last outside temperature provided by the OpenTherm gateway.
     int           insideTemperature  = INVALID_TEMP;            // Last measured inside temperature.
     int           waterTemperatureSetpoint = 220;               // CV water temperature setpoint to turn the pump on / off. Might be configurable in the future.
     int           insideTemperatureSetpoint = DEFAULT_INSIDE_TEMP_SETPOINT; // Room temperature setpoint to turn the pump on / off. Might be configurable in the future.

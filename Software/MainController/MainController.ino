@@ -1,7 +1,10 @@
 // python3 ~/.arduino15/packages/esp8266/hardware/esp8266/2.7.4/tools/espota.py -i 192.168.178.115 -p 8266 -f /tmp/arduino_build_661492/MainController.ino.bin
+// LOLIN D1 mini
+// ESP8266 and ESP32 driver for SSD1306 display, ThingPulse, Fabrice Weinberg. Version 4.0.0
 // Going OTA...
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
+#include <ESP8266HTTPClient.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 #include "network_secrets.h"
@@ -17,7 +20,7 @@ bool doingota = false;
 #include "src/RF433/RF433.h"
 #include "src/InterUnitCommunication/InterUnitCommunication.h"
 
-#define DEBUG;
+//#define DEBUG
 #ifdef DEBUG
   #define DEBUGONLY(statement) statement;
 #else
@@ -77,6 +80,13 @@ static unsigned long lastloopmillis;
 WiFiEventHandler mConnectHandler, mDisConnectHandler, mGotIpHandler;
 const unsigned long WIFI_TRY_INTERVAL = 60000;
 unsigned long lastWiFiTry = -WIFI_TRY_INTERVAL;
+
+// Communication OpenTherm gateway
+const unsigned long OTOUTSIDE_INTERVAL = 300000;        // Read at least every 5 minutes.
+const unsigned long OTOUTSIDE_RETRY = 30000;            // Retry every 30 seconds when we fail.
+const unsigned long OTOUTSIDE_INVALID_TIMEOUT = 600000; // When failing for 10 minutes, declare the temp invalid.
+unsigned long lastOTOutsideTemp = millis() - OTOUTSIDE_INTERVAL;
+unsigned long lastOTOutsideTempOK = millis() - OTOUTSIDE_INVALID_TIMEOUT;
 
 //////////////////////////////////////////////////////////////
 // Include display control
@@ -149,7 +159,7 @@ void setup()
     ctrl.wifiStatus = '#';
     screen.TriggerUpdate(); 
     ArduinoOTA.begin();
-    MDNS.begin("esp8266");
+    MDNS.begin("Thermostat");
   });
 
   //////////////////////////////////////////////////////////////
@@ -317,6 +327,40 @@ void loop()
     ctrl.pumpCommunicationOK = false;
     ctrl.waterTemperature = INVALID_TEMP;
     screen.TriggerUpdate();
+  }
+
+  timestamp = millis(); // Freeze the time again, communication might have been lengthy
+
+  //////////////////////////////////////////////////////////////
+  // Communication with the OpenTherm gateway
+  //////////////////////////////////////////////////////////////
+  if ( timestamp - lastOTOutsideTemp > OTOUTSIDE_INTERVAL )
+  {
+    WiFiClient client;
+    HTTPClient http;
+    http.setTimeout(500);
+    http.begin(client, "http://192.168.178.6/read?id=27");
+    int httpCode = http.GET();
+    if (httpCode == HTTP_CODE_OK ) {
+      lastOTOutsideTemp = timestamp;
+      String payload = http.getString();
+      auto idx = payload.indexOf('=');
+      if ( idx > 0 )
+      {
+        ctrl.outsideTemperatureOT = atof(payload.c_str() + idx + 1) * 10;
+        lastOTOutsideTempOK = timestamp;
+        screen.TriggerUpdate();
+      }
+    }
+    else
+    {
+      lastOTOutsideTemp = timestamp - OTOUTSIDE_INTERVAL + OTOUTSIDE_RETRY;
+    }
+    http.end();
+  }
+  if ( timestamp - lastOTOutsideTempOK > OTOUTSIDE_INVALID_TIMEOUT )
+  {
+    ctrl.outsideTemperatureOT = INVALID_TEMP;
   }
 
   timestamp = millis(); // Freeze the time again, communication might have been lengthy
