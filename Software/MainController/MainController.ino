@@ -85,6 +85,7 @@ unsigned long lastWiFiTry = -WIFI_TRY_INTERVAL;
 const unsigned long OTOUTSIDE_INTERVAL = 300000;        // Read at least every 5 minutes.
 const unsigned long OTOUTSIDE_RETRY = 30000;            // Retry every 30 seconds when we fail.
 const unsigned long OTOUTSIDE_INVALID_TIMEOUT = 600000; // When failing for 10 minutes, declare the temp invalid.
+bool otRequested = false; // Was a request send to get the OT outside temp?
 unsigned long lastOTOutsideTemp = millis() - OTOUTSIDE_INTERVAL;
 unsigned long lastOTOutsideTempOK = millis() - OTOUTSIDE_INVALID_TIMEOUT;
 
@@ -334,7 +335,7 @@ void loop()
   //////////////////////////////////////////////////////////////
   // Communication with the OpenTherm gateway
   //////////////////////////////////////////////////////////////
-  if ( timestamp - lastOTOutsideTemp > OTOUTSIDE_INTERVAL )
+  if ( false ) //timestamp - lastOTOutsideTemp > OTOUTSIDE_INTERVAL )
   {
     WiFiClient client;
     HTTPClient http;
@@ -351,6 +352,10 @@ void loop()
         lastOTOutsideTempOK = timestamp;
         screen.TriggerUpdate();
       }
+    }
+    else if ( httpCode == 202 )
+    {
+      lastOTOutsideTemp = timestamp - OTOUTSIDE_INTERVAL + 2000; // Requested. Get the value after 2 second.
     }
     else
     {

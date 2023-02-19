@@ -28,6 +28,11 @@ void WebServer::ServeRoot()
   result.ConcatTemp(MPCtrl->insideTemperature);
   result += "</div></p><p>Buiten temperatuur<br><div class=\"T\">";
   result.ConcatTemp(MPCtrl->outsideTemperature);
+  if ( MPCtrl->outsideTemperatureOT > -1000 )
+  {
+    result += "/";
+    result.concat(MPCtrl->outsideTemperatureOT/10);
+  }
   result += "</div></p><p>Water: ";
   result.ConcatTemp(MPCtrl->waterTemperature);
   result += "<br>Pomp: ";
