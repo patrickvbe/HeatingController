@@ -335,7 +335,7 @@ void loop()
   //////////////////////////////////////////////////////////////
   // Communication with the OpenTherm gateway
   //////////////////////////////////////////////////////////////
-  if ( false ) //timestamp - lastOTOutsideTemp > OTOUTSIDE_INTERVAL )
+  if ( timestamp - lastOTOutsideTemp > OTOUTSIDE_INTERVAL )
   {
     WiFiClient client;
     HTTPClient http;
