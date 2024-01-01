@@ -340,7 +340,7 @@ void loop()
     WiFiClient client;
     HTTPClient http;
     http.setTimeout(500);
-    http.begin(client, "http://192.168.178.2/read?id=27");
+    http.begin(client, "http://192.168.178.8/read?id=27");
     int httpCode = http.GET();
     if (httpCode == HTTP_CODE_OK ) {
       lastOTOutsideTemp = timestamp;

@@ -6,7 +6,7 @@
 static ESP8266WebServer server(80);
 WebServer webserver;
 
-static const char* pageheader = "<html><head><style>body { zoom: 3; font-family: Arial;} .myDiv { background-color: lightblue; text-align: center; font-size: 40px;} .T { font-size: 100px;}</style></head><body>";
+static const char* pageheader = "<html><head><style>body { zoom: 1; font-family: Arial;} .myDiv { background-color: lightblue; text-align: center; font-size: 40px;} .T { font-size: 100px;}</style></head><body>";
 static const char* pagefooter = "</body></html>";
 
 void WebServer::Init(ControlValues& ctrl)
