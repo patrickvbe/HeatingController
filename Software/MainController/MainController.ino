@@ -1,17 +1,57 @@
 // python3 ~/.arduino15/packages/esp8266/hardware/esp8266/2.7.4/tools/espota.py -i 192.168.178.115 -p 8266 -f /tmp/arduino_build_661492/MainController.ino.bin
 // LOLIN D1 mini
 // ESP8266 and ESP32 driver for SSD1306 display, ThingPulse, Fabrice Weinberg. Version 4.0.0
+
+#include "network_secrets.h"
+
+//////////////////////////////////////////////////////////////
+/*
+ * The MySensors Arduino library handles the wireless radio link and protocol
+ * between your home built sensors/actuators and HA controller of choice.
+ * Documentation: http://www.mysensors.org
+ * Support Forum: http://forum.mysensors.org
+ */
+//#define MY_DEBUG
+#define MY_GATEWAY_ESP8266
+#define MY_WIFI_SSID STASSID
+#define MY_WIFI_PASSWORD STAPSK
+#define MY_HOSTNAME "Thermostaat"
+#define MY_PORT 5003
+#define MY_GATEWAY_MAX_CLIENTS 2
+#include <MySensors.h>
+#undef max
+#undef min
+#define THERMOSTAT_ID 10
+#define WATER_TEMP_ID 11
+#define PUMP_FORCED_ID 12
+#define OUTSIDE_TEMP_ID 13
+#define COMMUNICATION_ID 14
+
+MyMessage msg_thermostat_temp(THERMOSTAT_ID, V_TEMP);
+MyMessage msg_thermostat_status(THERMOSTAT_ID, V_STATUS);
+MyMessage msg_thermostat_flow_state(THERMOSTAT_ID, V_HVAC_FLOW_STATE);
+MyMessage msg_thermostat_setpoint(THERMOSTAT_ID, V_HVAC_SETPOINT_HEAT);
+MyMessage msg_water_temp(WATER_TEMP_ID, V_TEMP);
+MyMessage msg_outside_temp(OUTSIDE_TEMP_ID, V_TEMP);
+MyMessage msg_pump_forced(PUMP_FORCED_ID, V_STATUS);
+MyMessage msg_communication(COMMUNICATION_ID, V_STATUS);
+bool mysensor_initialized = false;
+bool mysensors_initial_value_set = false;
+int new_setpoint_from_my_sensors = 0;
+
+//////////////////////////////////////////////////////////////
+
 // Going OTA...
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <ESP8266HTTPClient.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
-#include "network_secrets.h"
+//#include "network_secrets.h"
 //#define STASSID "your-ssid"
 //#define STAPSK  "your-password"
-const char* ssid = STASSID;
-const char* password = STAPSK;
+// const char* ssid = STASSID;
+// const char* password = STAPSK;
 bool doingota = false;
 
 // Sensors, etc.
@@ -132,6 +172,7 @@ DallasTemperature       insidetemp(&onewire);
 void setup()
 {
   Serial.begin(115200);
+  DEBUGONLY(Serial.println("Begin"));
 
   //////////////////////////////////////////////////////////////
   // Display setup
@@ -142,26 +183,26 @@ void setup()
   //////////////////////////////////////////////////////////////
   // WiFi setup
   //////////////////////////////////////////////////////////////
-  WiFi.mode(WIFI_STA);
-  WiFi.disconnect() ;
-  WiFi.persistent(false);
-  mDisConnectHandler = WiFi.onStationModeDisconnected([](const WiFiEventStationModeDisconnected&)
-  {
-    ctrl.wifiStatus = '-';
-    screen.TriggerUpdate(); 
-  });
-  mConnectHandler = WiFi.onStationModeConnected([](const WiFiEventStationModeConnected&)
-  {
-    ctrl.wifiStatus = '+';
-    screen.TriggerUpdate(); 
-  });
-  mGotIpHandler = WiFi.onStationModeGotIP([](const WiFiEventStationModeGotIP&)
-  {
-    ctrl.wifiStatus = '#';
-    screen.TriggerUpdate(); 
-    ArduinoOTA.begin();
-    MDNS.begin("Thermostat");
-  });
+  // WiFi.mode(WIFI_STA);
+  // WiFi.disconnect() ;
+  // WiFi.persistent(false);
+  // mDisConnectHandler = WiFi.onStationModeDisconnected([](const WiFiEventStationModeDisconnected&)
+  // {
+  //   ctrl.wifiStatus = '-';
+  //   screen.TriggerUpdate(); 
+  // });
+  // mConnectHandler = WiFi.onStationModeConnected([](const WiFiEventStationModeConnected&)
+  // {
+  //   ctrl.wifiStatus = '+';
+  //   screen.TriggerUpdate(); 
+  // });
+  // mGotIpHandler = WiFi.onStationModeGotIP([](const WiFiEventStationModeGotIP&)
+  // {
+  //   ctrl.wifiStatus = '#';
+  //   screen.TriggerUpdate(); 
+  //   ArduinoOTA.begin();
+  //   MDNS.begin("Thermostat");
+  // });
 
   //////////////////////////////////////////////////////////////
   // OTA setup
@@ -192,6 +233,7 @@ void setup()
     rcv.start();
     doingota = false;
   });
+  ArduinoOTA.begin();
 
   //////////////////////////////////////////////////////////////
   // 
@@ -230,6 +272,26 @@ boolean ControlValuesAreValid()
 }
 
 /***************************************************************
+ * MySensors registration
+ ***************************************************************/
+void presentation()
+{
+  sendSketchInfo("Thermostaat", "2.3");
+  wait(250);
+  present(THERMOSTAT_ID, S_HVAC);
+  wait(250);
+  present(WATER_TEMP_ID, S_TEMP);
+  wait(250);
+  present(PUMP_FORCED_ID, S_BINARY);
+  wait(250);
+  present(OUTSIDE_TEMP_ID, S_TEMP);
+  wait(250);
+  present(COMMUNICATION_ID, S_BINARY);
+  wait(250);
+  mysensor_initialized = true;
+}
+
+/***************************************************************
  * Main loop
  ***************************************************************/
 void loop()
@@ -250,11 +312,23 @@ void loop()
   //////////////////////////////////////////////////////////////
   // Try to stay connected to the WiFi.
   //////////////////////////////////////////////////////////////
-  if (WiFi.status() != WL_CONNECTED && ctrl.wifiStatus != '#' && timestamp - lastWiFiTry > WIFI_TRY_INTERVAL)
-  { 
-    lastWiFiTry = timestamp;
-    WiFi.disconnect() ;
-    WiFi.begin ( ssid, password );  
+  // if (WiFi.status() != WL_CONNECTED && ctrl.wifiStatus != '#' && timestamp - lastWiFiTry > WIFI_TRY_INTERVAL)
+  // { 
+  //   lastWiFiTry = timestamp;
+  //   WiFi.disconnect() ;
+  //   WiFi.begin ( ssid, password );  
+  // }
+
+  if ( mysensor_initialized && !mysensors_initial_value_set ) {
+    send(msg_thermostat_flow_state.set("HeatOn"));
+    send(msg_thermostat_setpoint.set(ctrl.insideTemperatureSetpoint/10.0,1));
+    send(msg_thermostat_temp.set(0.0,1));
+    send(msg_thermostat_status.set(0));
+    send(msg_water_temp.set(0.0,1));
+    send(msg_outside_temp.set(0.0,1));
+    send(msg_pump_forced.set(0));
+    send(msg_communication.set(0));
+    mysensors_initial_value_set = true;
   }
 
   //////////////////////////////////////////////////////////////
@@ -292,6 +366,9 @@ void loop()
   //////////////////////////////////////////////////////////////
   if ( communicator.Read() )
   {
+    if ( !ctrl.pumpCommunicationOK ) {
+      send(msg_communication.set(1));
+    }
     ctrl.LastValidPumpTimestamp = timestamp;
     ctrl.pumpCommunicationOK = true;
     if ( ctrl.waterTemperature != communicator.m_temperature )
@@ -299,6 +376,7 @@ void loop()
       controlValuesChanged = true;
       if ( communicator.m_temperature > 0 ) ctrl.waterTemperature = communicator.m_temperature;
       else                                  ctrl.waterTemperature = INVALID_TEMP;
+      send(msg_water_temp.set(ctrl.waterTemperature == INVALID_TEMP ? 0.0 : ctrl.waterTemperature/10.0,1));
     }
     if ( ctrl.isPumpForced != communicator.m_pumpForcedOn )
     {
@@ -307,11 +385,13 @@ void loop()
       {
         ctrl.lastforcedon = timestamp;
       }
+      send(msg_pump_forced.set(ctrl.isPumpForced ? 1 : 0));
     }
     if ( ctrl.isPumpOn != communicator.m_pumpOn )
     {
       ctrl.isPumpOn = communicator.m_pumpOn;
       sendToPump = true;  // It's not what we expected, so we might have to update the pump controller.
+      send(msg_thermostat_status.set(ctrl.isPumpOn ? 1 : 0));
     }
     DEBUGONLY(LogTime());
     DEBUGONLY(Serial.println("Received update from pump controller"));
@@ -325,6 +405,7 @@ void loop()
     DEBUGONLY(Serial.print(timestamp));
     DEBUGONLY(Serial.print(" "));
     DEBUGONLY(Serial.println(ctrl.LastValidPumpTimestamp));
+    send(msg_communication.set(0));
     ctrl.pumpCommunicationOK = false;
     ctrl.waterTemperature = INVALID_TEMP;
     screen.TriggerUpdate();
@@ -351,6 +432,7 @@ void loop()
         ctrl.outsideTemperatureOT = atof(payload.c_str() + idx + 1) * 10;
         lastOTOutsideTempOK = timestamp;
         screen.TriggerUpdate();
+        send(msg_outside_temp.set(ctrl.outsideTemperatureOT/10.0,1));
       }
     }
     else if ( httpCode == 202 )
@@ -385,12 +467,14 @@ void loop()
         temp = INVALID_TEMP;
         DEBUGONLY(LogTime());
         DEBUGONLY(Serial.println("Invalid inside temperature"));
+        DEBUGONLY(send(msg_water_temp.set(int(timestamp % 60))));
       }
       if ( temp != ctrl.insideTemperature )
       {
         ctrl.insideTemperature = temp;
         screen.TriggerUpdate();
         controlValuesChanged = true;
+        send(msg_thermostat_temp.set(ctrl.insideTemperature == INVALID_TEMP ? 0.0 : ctrl.insideTemperature / 10.0,1));
         DEBUGONLY(LogTime());
         DEBUGONLY(Serial.print("Inside temp changed to "));
         DEBUGONLY(Serial.println(ctrl.insideTemperature));
@@ -407,6 +491,16 @@ void loop()
       DEBUGONLY(LogTime());
       DEBUGONLY(Serial.println("Requested inside temperature"));
     }
+  }
+
+  //////////////////////////////////////////////////////////////
+  // Updates from MySensors
+  //////////////////////////////////////////////////////////////
+  if ( new_setpoint_from_my_sensors != 0 ) {
+    ctrl.insideTemperatureSetpoint = new_setpoint_from_my_sensors;
+    screen.TriggerUpdate();
+    controlValuesChanged = true;
+    new_setpoint_from_my_sensors = 0;
   }
 
   //////////////////////////////////////////////////////////////
@@ -429,7 +523,10 @@ void loop()
   }
 
   // Either by UI actions or the time-out above.
-  controlValuesChanged |= oldsetpoint != ctrl.insideTemperatureSetpoint;
+  if ( oldsetpoint != ctrl.insideTemperatureSetpoint ) {
+    controlValuesChanged = true; 
+    send(msg_thermostat_setpoint.set(ctrl.insideTemperatureSetpoint/10.0,1));
+  }
 
   if ( controlValuesChanged && ControlValuesAreValid() )
   {
@@ -473,6 +570,17 @@ void loop()
   //////////////////////////////////////////////////////////////
   // Prevent a power-sucking 100% CPU loop.
   //////////////////////////////////////////////////////////////
-  delay(20);
+  wait(20);
   lastloopmillis = timestamp;
+}
+
+void receive(const MyMessage &message) {
+  if (message.isAck()) {
+     return;
+  }
+  switch (message.type) {
+    case V_HVAC_SETPOINT_HEAT:
+      new_setpoint_from_my_sensors = message.getFloat() * 10;
+   }
+
 }
