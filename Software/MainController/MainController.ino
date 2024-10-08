@@ -541,7 +541,7 @@ void loop()
     }
     else
     {
-      if ( ctrl.insideTemperature <= ctrl.insideTemperatureSetpoint - 1 && ctrl.waterTemperature >= ctrl.waterTemperatureSetpoint + 10 )
+      if ( ctrl.insideTemperature <= ctrl.insideTemperatureSetpoint - 1 && ctrl.waterTemperature >= ctrl.waterTemperatureSetpoint + 30 )
       {
         ctrl.pumpNeedsOn = true;
         screen.TriggerUpdate();
