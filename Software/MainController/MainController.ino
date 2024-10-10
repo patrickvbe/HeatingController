@@ -34,6 +34,7 @@ HABinarySensor pompGeforceerd("geforceerd");
 HABinarySensor communicatieOK("communicatie");
 HASwitch externaloverride("override");
 int new_setpoint_from_mqtt = 0;
+bool togglePumpOverride = false;
 
 //#define DEBUG
 #ifdef DEBUG
@@ -245,6 +246,7 @@ void setup()
   communicatieOK.setName("communicatie");
   externaloverride.setName("external override");
   externaloverride.onCommand([](bool state, HASwitch* sender){
+    togglePumpOverride = ctrl.pumpOverride != state;
     sender->setState(state);
   });
   mqtt.begin(BROKER_ADDR, broker_login, broker_pwd);
@@ -496,6 +498,13 @@ void loop()
     new_setpoint_from_mqtt = 0;
   }
 
+  if ( togglePumpOverride )
+  {
+    ctrl.pumpOverride = !ctrl.pumpOverride;
+    togglePumpOverride = false;
+    controlValuesChanged = true;
+  }
+
   //////////////////////////////////////////////////////////////
   // The actual controlling actions.
   //////////////////////////////////////////////////////////////
@@ -519,7 +528,7 @@ void loop()
   {
     if ( ctrl.pumpNeedsOn )
     {
-      if ( ctrl.insideTemperature > ctrl.insideTemperatureSetpoint + 1 || ctrl.waterTemperature <= ctrl.waterTemperatureSetpoint )
+      if ( !ctrl.pumpOverride && (ctrl.insideTemperature > ctrl.insideTemperatureSetpoint + 1 || ctrl.waterTemperature <= ctrl.waterTemperatureSetpoint) )
       {
         ctrl.pumpNeedsOn = false;
         screen.TriggerUpdate();
@@ -528,7 +537,7 @@ void loop()
     }
     else
     {
-      if ( ctrl.insideTemperature <= ctrl.insideTemperatureSetpoint - 1 && ctrl.waterTemperature >= ctrl.waterTemperatureSetpoint + 30 )
+      if ( ctrl.pumpOverride || (ctrl.insideTemperature <= ctrl.insideTemperatureSetpoint - 1 && ctrl.waterTemperature >= ctrl.waterTemperatureSetpoint + 30) )
       {
         ctrl.pumpNeedsOn = true;
         screen.TriggerUpdate();

@@ -21,6 +21,8 @@ class ControlValues
     bool          isPumpForced = false;                         // Forced status received from the pump unit.
     bool          pumpNeedsOn = false;                          // Our computed / wanted pump status.
     bool          pumpCommunicationOK = false;                  // Did we receive valid and on-time communication from the pump unit?
+    bool          pumpOverride = false;                         // External controller asks to turn the pump on regardless anything else.
+    bool          insideRequested = false;
     int           outsideTemperature = INVALID_TEMP;            // New temperature received from the weather station.
     int           outsideTemperatureOT = INVALID_TEMP;          // Last outside temperature provided by the OpenTherm gateway.
     int           insideTemperature  = INVALID_TEMP;            // Last measured inside temperature.
@@ -31,7 +33,6 @@ class ControlValues
     unsigned long outsideTimestamp  = 0;                        // Timestamp of the last valid outside temperature received.
     unsigned long insideTimestamp = INVALID_TIME;               // Timestamp the inside temperature was last measured.
     unsigned long lastforcedon=0;
-    bool          insideRequested = false;
     char          wifiStatus = '-'; // '-' not connected, '+' connected, '#' got IP.
 };
 
