@@ -35,6 +35,8 @@ HABinarySensor communicatieOK("communicatie");
 HASwitch externaloverride("override");
 int new_setpoint_from_mqtt = 0;
 bool togglePumpOverride = false;
+unsigned long lastFullMqttUpdate = millis();
+#define MQTT_FULL_UPDATE_INTERVAL 15000
 
 //#define DEBUG
 #ifdef DEBUG
@@ -219,12 +221,12 @@ void setup()
   device.setName("thermostaat");
   mqtt.onConnected([]() {
     hvac.setTargetTemperature(ctrl.insideTemperatureSetpoint/10.0F);
-    hvac.setCurrentTemperature(ctrl.insideTemperature == INVALID_TEMP ? 0.0F : ctrl.insideTemperature / 10.0F);
-    watertemp.setValue(ctrl.waterTemperature == INVALID_TEMP ? 0.0F : ctrl.waterTemperature/10.0F);
+    if (ctrl.insideTemperature != INVALID_TEMP) hvac.setCurrentTemperature(ctrl.insideTemperature / 10.0F);
+    if (ctrl.waterTemperature != INVALID_TEMP) watertemp.setValue(ctrl.waterTemperature/10.0F);
     pompAan.setState(ctrl.isPumpOn);
     pompGeforceerd.setState(ctrl.isPumpForced);
     communicatieOK.setState(ctrl.pumpCommunicationOK);
-    externaloverride.setState(false);
+    externaloverride.setState(ctrl.pumpOverride);
   });
   hvac.onTargetTemperatureCommand([](HANumeric temperature, HAHVAC* sender) {
     new_setpoint_from_mqtt = temperature.toFloat() * 10;
@@ -365,7 +367,7 @@ void loop()
       controlValuesChanged = true;
       if ( communicator.m_temperature > 0 ) ctrl.waterTemperature = communicator.m_temperature;
       else                                  ctrl.waterTemperature = INVALID_TEMP;
-      watertemp.setValue(ctrl.waterTemperature == INVALID_TEMP ? 0.0F : ctrl.waterTemperature/10.0F);
+      watertemp.setValue(ctrl.waterTemperature == INVALID_TEMP ? 20.0F : ctrl.waterTemperature/10.0F);
     }
     if ( ctrl.isPumpForced != communicator.m_pumpForcedOn )
     {
@@ -463,7 +465,7 @@ void loop()
         ctrl.insideTemperature = temp;
         screen.TriggerUpdate();
         controlValuesChanged = true;
-        hvac.setCurrentTemperature(ctrl.insideTemperature == INVALID_TEMP ? 0.0F : ctrl.insideTemperature / 10.0F);
+        hvac.setCurrentTemperature(ctrl.insideTemperature == INVALID_TEMP ? 20.0F : ctrl.insideTemperature / 10.0F);
         DEBUGONLY(LogTime());
         DEBUGONLY(Serial.print("Inside temp changed to "));
         DEBUGONLY(Serial.println(ctrl.insideTemperature));
@@ -503,6 +505,19 @@ void loop()
     ctrl.pumpOverride = !ctrl.pumpOverride;
     togglePumpOverride = false;
     controlValuesChanged = true;
+  }
+
+  // Prevent mqtt form invalidating values when not updated.
+  if ( (timestamp - lastFullMqttUpdate) > MQTT_FULL_UPDATE_INTERVAL )
+  {
+    unsigned long lastFullMqttUpdate = millis();
+    hvac.setTargetTemperature(ctrl.insideTemperatureSetpoint/10.0F);
+    if ( ctrl.insideTemperature != INVALID_TEMP ) hvac.setCurrentTemperature(ctrl.insideTemperature / 10.0F);
+    if (ctrl.waterTemperature != INVALID_TEMP ) watertemp.setValue(ctrl.waterTemperature/10.0F);
+    pompAan.setState(ctrl.isPumpOn);
+    pompGeforceerd.setState(ctrl.isPumpForced);
+    communicatieOK.setState(ctrl.pumpCommunicationOK);
+    externaloverride.setState(ctrl.pumpOverride);
   }
 
   //////////////////////////////////////////////////////////////
